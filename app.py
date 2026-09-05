@@ -20,6 +20,7 @@ from google import genai
 
 import data_loader
 import analytics
+import qa_pipeline
 
 # ── Load environment variables from .env ──────────────────────────────────────
 load_dotenv()
@@ -195,6 +196,66 @@ def attention_panel():
     except Exception as exc:
         return jsonify({"status": "error", "error": str(exc),
                         "trace": traceback.format_exc()}), 500
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ROUTES — Q&A Pipeline (Step 5)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route("/api/chat", methods=["POST"])
+def chat():
+    """
+    Manager asks a plain-language question.
+    Pipeline: Gemini parses intent → Python fetches numbers → Gemini phrases answer.
+    Gemini NEVER invents numbers.
+    Body: { "question": "what's running low at the mall branch?" }
+    """
+    try:
+        body     = request.get_json(force=True, silent=True) or {}
+        question = (body.get("question") or "").strip()
+
+        if not question:
+            return jsonify({
+                "status": "error",
+                "answer": "Please provide a question in the request body: {\"question\": \"...\"}"
+            }), 400
+
+        result = qa_pipeline.answer_question(question, client, CHAT_MODEL)
+        return jsonify({"status": "ok", **result})
+
+    except Exception as exc:
+        return jsonify({
+            "status": "error",
+            "answer": "Something went wrong. Please try again.",
+            "error":  str(exc),
+            "trace":  traceback.format_exc()
+        }), 500
+
+
+@app.route("/api/chat/test-refusal")
+def chat_refusal_test():
+    """
+    Step 6 — tests all 7 judge-style questions including deliberate traps.
+    Hit this endpoint to verify every scenario works before demo.
+    """
+    test_questions = [
+        "Which products are likely to run out of stock soon?",
+        "How did Paracetamol 500mg sell this month at the Mall Branch?",
+        "What's the stock status of Ibuprofen Gel 500mg?",          # trap — doesn't exist
+        "Which store is performing worst this month and why?",
+        "What's my profit margin on cold and flu medicines?",        # out of scope
+        "Is anything close to expiry that I should worry about?",
+        "What's overstocked?",
+    ]
+    results = []
+    for q in test_questions:
+        result = qa_pipeline.answer_question(q, client, CHAT_MODEL)
+        results.append({
+            "question": q,
+            "intent":   result.get("intent"),
+            "answer":   result.get("answer"),
+        })
+    return jsonify({"status": "ok", "tests": results})
 
 
 # ─────────────────────────────────────────────────────────────────────────────
