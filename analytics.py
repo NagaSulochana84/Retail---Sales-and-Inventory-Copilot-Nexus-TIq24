@@ -139,51 +139,52 @@ def check_dead_stock() -> list[dict]:
 
 def check_sales_spikes_and_drops() -> list[dict]:
     """
-    Per product (all stores): compare recent 7-day avg vs prior 7-day avg.
-    Spike : recent > SPIKE_FACTOR  × prior
-    Drop  : recent < DROP_FACTOR   × prior
+    Per (store, product): compare recent 7-day avg vs prior 7-day avg.
+    Each item has store_id so the frontend can filter by store.
+    Spike: recent > SPIKE_FACTOR × prior
+    Drop : recent < DROP_FACTOR × prior
     """
     flags = []
     pmap  = data_loader.get_product_map()
-    seen  = set()
+    smap  = data_loader.get_store_map()
 
     for row in data_loader.get_stock():
+        sid = row["store_id"]
         pid = row["product_id"]
-        if pid in seen:
-            continue
-        seen.add(pid)
 
-        recent = _avg_daily(pid, days=7, offset=0)
-        prior  = _avg_daily(pid, days=7, offset=7)
+        recent = _avg_daily_by_store(pid, sid, days=7, offset=0)
+        prior  = _avg_daily_by_store(pid, sid, days=7, offset=7)
 
-        # Spike
         if prior > 0 and recent >= SPIKE_MIN_RECENT_SALES and recent > SPIKE_FACTOR * prior:
             factor = round(recent / prior, 1)
             flags.append({
                 "flag":         "sales_spike",
+                "store_id":     sid,
+                "store_name":   smap.get(sid, {}).get("store_name", sid),
                 "product_id":   pid,
                 "product_name": pmap.get(pid, {}).get("product_name", pid),
                 "category":     pmap.get(pid, {}).get("category", ""),
                 "recent_avg":   recent,
                 "prior_avg":    prior,
                 "spike_factor": factor,
-                "assumption":   "Comparing last 7 days vs previous 7 days (all stores combined)",
-                "action":       f"Sales up {factor}x — check stock levels and consider emergency reorder.",
+                "assumption":   "Comparing last 7 days vs previous 7 days at this store",
+                "action":       f"Sales up {factor}x — check stock and consider emergency reorder.",
             })
 
-        # Drop
         elif prior > 0 and recent < DROP_FACTOR * prior and prior >= 2:
             factor = round(recent / prior, 2)
             flags.append({
                 "flag":         "sales_drop",
+                "store_id":     sid,
+                "store_name":   smap.get(sid, {}).get("store_name", sid),
                 "product_id":   pid,
                 "product_name": pmap.get(pid, {}).get("product_name", pid),
                 "category":     pmap.get(pid, {}).get("category", ""),
                 "recent_avg":   recent,
                 "prior_avg":    prior,
                 "drop_factor":  factor,
-                "assumption":   "Comparing last 7 days vs previous 7 days (all stores combined)",
-                "action":       "Sales dropped sharply — check for supply issues, expiry, or competition.",
+                "assumption":   "Comparing last 7 days vs previous 7 days at this store",
+                "action":       "Sales dropped sharply — check supply issues, expiry, or pricing.",
             })
 
     return flags
