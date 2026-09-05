@@ -1,0 +1,26 @@
+product_id,product_name,category,unit_cost,unit_price,reorder_threshold
+P001,Paracetamol 500mg Strip,OTC Medicine,12.0,25.0,100
+P002,Ibuprofen 400mg Strip,OTC Medicine,15.0,32.0,80
+P003,Cetirizine 10mg Strip,OTC Medicine,18.0,38.0,80
+P004,Antacid Syrup 200ml,OTC Medicine,28.0,58.0,60
+P005,Cough Syrup 100ml,OTC Medicine,35.0,72.0,50
+P006,Vitamin C 500mg Strip,OTC Medicine,22.0,45.0,80
+P007,ORS Sachets Pack of 10,OTC Medicine,20.0,42.0,70
+P008,Metformin 500mg Strip,Prescription Medicine,14.0,30.0,80
+P009,Atorvastatin 10mg Strip,Prescription Medicine,28.0,58.0,60
+P010,Amlodipine 5mg Strip,Prescription Medicine,16.0,34.0,70
+P011,Azithromycin 500mg Strip,Prescription Medicine,42.0,88.0,40
+P012,Pantoprazole 40mg Strip,Prescription Medicine,22.0,46.0,70
+P013,Losartan 50mg Strip,Prescription Medicine,25.0,52.0,60
+P014,Hand Sanitizer 500ml,Personal Care,55.0,110.0,40
+P015,Sunscreen SPF50 50g,Personal Care,120.0,240.0,30
+P016,Moisturizing Lotion 200ml,Personal Care,85.0,170.0,35
+P017,Antiseptic Cream 25g,Personal Care,45.0,90.0,40
+P018,Lip Balm SPF15,Personal Care,60.0,120.0,25
+P019,Baby Diaper Rash Cream 50g,Baby Care,95.0,190.0,30
+P020,Baby Fever Syrup 60ml,Baby Care,65.0,130.0,35
+P021,Baby Vitamin D Drops 15ml,Baby Care,180.0,360.0,20
+P022,Baby Wet Wipes Pack of 72,Baby Care,110.0,220.0,40
+P023,Digital Thermometer,Medical Devices/Supplies,180.0,360.0,15
+P024,Blood Pressure Monitor,Medical Devices/Supplies,800.0,1600.0,5
+P025,Glucometer Test Strips Pack of 25,Medical Devices/Supplies,220.0,440.0,20
