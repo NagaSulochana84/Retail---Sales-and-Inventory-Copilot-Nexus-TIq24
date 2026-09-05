@@ -232,29 +232,67 @@ def check_expiry_risk() -> list[dict]:
 
 # ── Master function ────────────────────────────────────────────────────────────
 
+def check_ghost_stock() -> list[dict]:
+    """
+    Products with ZERO sales in the entire 60-day history AND non-zero stock.
+    Hardest category — product has never moved since last restock.
+    """
+    flags = []
+    pmap  = data_loader.get_product_map()
+    seen  = set()
+
+    for row in data_loader.get_stock():
+        pid = row["product_id"]
+        if pid in seen:
+            continue
+        seen.add(pid)
+
+        total_sales = sum(r["units_sold"] for r in data_loader.get_sales(product_id=pid))
+        total_stk   = sum(r["current_stock"] for r in data_loader.get_stock(product_id=pid))
+
+        if total_sales == 0 and total_stk > 0:
+            flags.append({
+                "flag":         "ghost_stock",
+                "product_id":   pid,
+                "product_name": pmap.get(pid, {}).get("product_name", pid),
+                "category":     pmap.get(pid, {}).get("category", ""),
+                "total_stock":  total_stk,
+                "assumption":   "Zero units sold across all 3 stores in entire 60-day history",
+                "action":       "Investigate: wrong shelf location, pricing, or product no longer in demand.",
+            })
+    return flags
+
+
+# ── Master function ────────────────────────────────────────────────────────────
+
 def run_all_checks() -> dict:
     """
-    Run all 4 checks and return a structured attention report.
-    This is what the frontend 'Today's Attention' panel displays.
+    Run all checks and return a structured attention report.
+    This is what /api/attention and the frontend display.
     """
     stockouts = check_stockout_risk()
     dead      = check_dead_stock()
-    spikes    = [f for f in check_sales_spikes_and_drops() if f["flag"] == "sales_spike"]
-    drops     = [f for f in check_sales_spikes_and_drops() if f["flag"] == "sales_drop"]
+    ghost     = check_ghost_stock()
+    all_sd    = check_sales_spikes_and_drops()
+    spikes    = [f for f in all_sd if f["flag"] == "sales_spike"]
+    drops     = [f for f in all_sd if f["flag"] == "sales_drop"]
     expiry    = check_expiry_risk()
 
     return {
         "generated_on":   TODAY_STR,
         "stockout_risk":  stockouts,
         "dead_stock":     dead,
+        "ghost_stock":    ghost,
         "sales_spikes":   spikes,
         "sales_drops":    drops,
         "expiry_risk":    expiry,
         "summary": {
-            "stockout_count": len(stockouts),
-            "dead_stock_count": len(dead),
-            "spike_count":    len(spikes),
-            "drop_count":     len(drops),
-            "expiry_count":   len(expiry),
+            "stockout_count":    len(stockouts),
+            "dead_stock_count":  len(dead),
+            "ghost_stock_count": len(ghost),
+            "spike_count":       len(spikes),
+            "drop_count":        len(drops),
+            "expiry_count":      len(expiry),
         }
     }
+

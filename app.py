@@ -14,7 +14,7 @@ Test: http://localhost:8000/api/health
 import os
 import traceback
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, render_template
 from dotenv import load_dotenv
 from google import genai
 
@@ -50,19 +50,8 @@ app.config["JSON_SORT_KEYS"] = False
 
 @app.route("/")
 def index():
-    return jsonify({
-        "app":    "PharmaCopilot",
-        "track":  "PS03 — NexusTiq24",
-        "status": "running",
-        "endpoints": {
-            "health":       "/api/health",
-            "gemini_test":  "/api/gemini-test",
-            "data_summary": "/api/data/summary",
-            "stores":       "/api/data/stores",
-            "products":     "/api/data/products",
-            "stock":        "/api/data/stock",
-        }
-    })
+    """Serve the PharmaCopilot frontend."""
+    return render_template("index.html")
 
 
 @app.route("/api/health")

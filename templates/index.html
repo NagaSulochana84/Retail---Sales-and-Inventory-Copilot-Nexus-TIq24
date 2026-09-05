@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PharmaCopilot — Sales &amp; Inventory Copilot</title>
+<style>
+  :root {
+    --bg:            #eef1ec;
+    --panel:         #f7f8f5;
+    --ink:           #1c2320;
+    --ink-soft:      #565f5a;
+    --line:          #d7dcd4;
+    --accent:        #3a6b5c;
+    --accent-ink:    #ffffff;
+    --flag-stockout: #b0563a;
+    --flag-expiry:   #b3901f;
+    --flag-dead:     #6c7570;
+    --flag-ghost:    #6f6a95;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", Consolas, monospace;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.45;
+  }
+
+  #app {
+    height: 100vh;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Topbar ─────────────────────────────────────────────────── */
+  .topbar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 3rem;
+    padding: 0 1rem;
+    border-bottom: 1px solid var(--line);
+    background: var(--panel);
+    gap: 0.75rem;
+  }
+  .wordmark { font-weight: 700; font-size: 1rem; letter-spacing: .01em; white-space: nowrap; }
+  .wordmark span { color: var(--accent); }
+  .topbar-right { display: flex; align-items: center; gap: .6rem; }
+  #storeSelect {
+    font-family: var(--sans); font-size: .82rem;
+    background: var(--bg); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 5px;
+    padding: .3rem .5rem; cursor: pointer; max-width: 48vw;
+  }
+  .date-badge { font-size: .78rem; color: var(--ink-soft); white-space: nowrap; }
+
+  /* ── Flag cards grid ────────────────────────────────────────── */
+  .flag-grid {
+    flex: 0 0 auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: .5rem;
+    padding: .6rem 1rem;
+    border-bottom: 1px solid var(--line);
+  }
+  .flag-card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-left-width: 3px;
+    border-radius: 7px;
+    padding: .55rem .7rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+    user-select: none;
+    transition: opacity .12s;
+  }
+  .flag-card:hover   { opacity: .82; }
+  .flag-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .flag-card.active  { box-shadow: 0 0 0 2px currentColor; }
+
+  .flag-card.stockout { border-left-color: var(--flag-stockout); color: var(--flag-stockout); }
+  .flag-card.expiry   { border-left-color: var(--flag-expiry);   color: var(--flag-expiry); }
+  .flag-card.dead     { border-left-color: var(--flag-dead);     color: var(--flag-dead); }
+  .flag-card.ghost    { border-left-color: var(--flag-ghost);    color: var(--flag-ghost); }
+
+  .card-count { font-size: 1.8rem; font-weight: 700; font-family: var(--mono); line-height: 1; min-width: 2ch; }
+  .card-meta  { flex: 1; min-width: 0; }
+  .card-label { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--ink); }
+  .card-sub   { font-size: .72rem; color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: .1rem; }
+
+  /* ── Detail panel ───────────────────────────────────────────── */
+  .detail-panel {
+    flex: 0 0 auto;
+    max-height: 185px;
+    overflow-y: auto;
+    border-bottom: 1px solid var(--line);
+    background: var(--panel);
+  }
+  .detail-panel[hidden] { display: none; }
+
+  .detail-header {
+    position: sticky; top: 0; z-index: 1;
+    background: var(--panel);
+    display: flex; justify-content: space-between; align-items: center;
+    padding: .35rem 1rem;
+    border-bottom: 1px solid var(--line);
+  }
+  .detail-title { font-size: .8rem; font-weight: 600; color: var(--ink); }
+  .detail-close {
+    background: none; border: none; cursor: pointer;
+    color: var(--ink-soft); font-size: 1.1rem; line-height: 1; padding: 0 .25rem;
+  }
+
+  .detail-list { padding: .25rem 1rem .5rem; }
+  .detail-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    column-gap: .5rem;
+    padding: .3rem 0;
+    border-bottom: 1px dashed var(--line);
+    font-size: .8rem;
+  }
+  .detail-row:last-child { border-bottom: none; }
+  .detail-name   { font-weight: 500; color: var(--ink); }
+  .detail-store  { font-size: .7rem; color: var(--ink-soft); }
+  .detail-action { font-size: .7rem; color: var(--accent); grid-column: 1 / -1; margin-top: .1rem; }
+  .detail-meta   { font-family: var(--mono); font-size: .76rem; color: var(--ink-soft); text-align: right; white-space: pre; }
+
+  /* ── Chat ───────────────────────────────────────────────────── */
+  .chat { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+
+  .chat-log {
+    flex: 1 1 auto; min-height: 0;
+    overflow-y: auto;
+    padding: .8rem 1rem;
+    display: flex; flex-direction: column; gap: .55rem;
+  }
+  .chat-empty { margin: auto; color: var(--ink-soft); font-size: .88rem; text-align: center; max-width: 28ch; }
+  .chat-hint  { font-size: .74rem; margin-top: .35rem; color: var(--line); }
+
+  .msg {
+    max-width: 76%; padding: .5rem .7rem; border-radius: 9px;
+    font-size: .88rem; white-space: pre-wrap; word-break: break-word;
+  }
+  .msg.user      { align-self: flex-end; background: var(--accent); color: var(--accent-ink); border-bottom-right-radius: 3px; }
+  .msg.assistant { align-self: flex-start; background: var(--panel); border: 1px solid var(--line); border-bottom-left-radius: 3px; color: var(--ink); }
+  .msg.assistant.pending  { color: var(--ink-soft); font-style: italic; }
+  .msg.assistant.no-data  { color: var(--ink-soft); }
+  .msg.assistant.is-error { color: var(--flag-stockout); }
+
+  .evidence { margin-top: .45rem; border-top: 1px dashed var(--line); padding-top: .35rem; }
+  .evidence summary { cursor: pointer; font-size: .74rem; color: var(--accent); list-style: none; }
+  .evidence summary::before { content: "▶ "; }
+  details[open] > .evidence > summary::before { content: "▼ "; }
+  .evidence-body {
+    margin-top: .35rem; font-family: var(--mono); font-size: .72rem;
+    color: var(--ink-soft); white-space: pre-wrap; max-height: 150px; overflow-y: auto;
+  }
+
+  .chat-input-row {
+    flex: 0 0 auto; display: flex; gap: .5rem;
+    padding: .55rem 1rem;
+    border-top: 1px solid var(--line); background: var(--panel);
+  }
+  #chatInput {
+    flex: 1; min-width: 0; font-family: var(--sans); font-size: .88rem;
+    padding: .45rem .65rem; border: 1px solid var(--line); border-radius: 6px;
+    background: var(--bg); color: var(--ink);
+  }
+  #chatInput:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
+  .send-btn {
+    font-family: var(--sans); font-size: .85rem; font-weight: 600;
+    color: var(--accent-ink); background: var(--accent);
+    border: none; border-radius: 6px; padding: 0 1rem; cursor: pointer; white-space: nowrap;
+  }
+  .send-btn:disabled { opacity: .5; cursor: default; }
+
+  @media (max-width: 420px) {
+    .flag-grid { gap: .3rem; padding: .45rem .65rem; }
+    .card-count { font-size: 1.4rem; }
+    .msg { max-width: 90%; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Topbar -->
+  <header class="topbar">
+    <div class="wordmark">Pharma<span>Copilot</span></div>
+    <div class="topbar-right">
+      <select id="storeSelect" aria-label="Select store">
+        <option value="all">All Stores</option>
+        <!-- populated from GET /api/data/stores -->
+      </select>
+      <span class="date-badge" id="todayDate"></span>
+    </div>
+  </header>
+
+  <!-- 4 Flag Cards -->
+  <section class="flag-grid" aria-label="Today's attention">
+    <div class="flag-card stockout" id="card-stockout" role="button" tabindex="0">
+      <div class="card-count" id="count-stockout">—</div>
+      <div class="card-meta">
+        <div class="card-label">Stockout Risk</div>
+        <div class="card-sub" id="sub-stockout">Loading…</div>
+      </div>
+    </div>
+    <div class="flag-card expiry" id="card-expiry" role="button" tabindex="0">
+      <div class="card-count" id="count-expiry">—</div>
+      <div class="card-meta">
+        <div class="card-label">Near Expiry</div>
+        <div class="card-sub" id="sub-expiry">Loading…</div>
+      </div>
+    </div>
+    <div class="flag-card dead" id="card-dead" role="button" tabindex="0">
+      <div class="card-count" id="count-dead">—</div>
+      <div class="card-meta">
+        <div class="card-label">Dead Stock</div>
+        <div class="card-sub" id="sub-dead">Loading…</div>
+      </div>
+    </div>
+    <div class="flag-card ghost" id="card-ghost" role="button" tabindex="0">
+      <div class="card-count" id="count-ghost">—</div>
+      <div class="card-meta">
+        <div class="card-label">Ghost Stock</div>
+        <div class="card-sub" id="sub-ghost">Loading…</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Detail panel — shown on card click -->
+  <section class="detail-panel" id="detailPanel" hidden aria-live="polite">
+    <div class="detail-header">
+      <span class="detail-title" id="detailTitle"></span>
+      <button class="detail-close" id="detailClose" aria-label="Close">×</button>
+    </div>
+    <div class="detail-list" id="detailList"></div>
+  </section>
+
+  <!-- Chat -->
+  <section class="chat" aria-label="Ask the copilot">
+    <div class="chat-log" id="chatLog">
+      <div class="chat-empty" id="chatEmpty">
+        Ask about sales, stock levels, or today's flags.
+        <div class="chat-hint">e.g. "What's running low at the Mall Branch?"</div>
+      </div>
+    </div>
+    <form class="chat-input-row" id="chatForm">
+      <input id="chatInput" type="text" placeholder="Ask a question…" autocomplete="off" />
+      <button class="send-btn" type="submit" id="chatSend">Send</button>
+    </form>
+  </section>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ── State ──────────────────────────────────────────────────── */
+  var report        = null;   // cached response from GET /api/attention
+  var activeCard    = null;   // 'stockout' | 'expiry' | 'dead' | 'ghost' | null
+  var selectedStore = "all";  // 'all' | 'S001' | 'S002' | 'S003'
+
+  /* ── DOM refs ───────────────────────────────────────────────── */
+  var storeSelect = document.getElementById("storeSelect");
+  var todayDateEl = document.getElementById("todayDate");
+  var detailPanel = document.getElementById("detailPanel");
+  var detailTitle = document.getElementById("detailTitle");
+  var detailList  = document.getElementById("detailList");
+  var detailClose = document.getElementById("detailClose");
+  var chatLog     = document.getElementById("chatLog");
+  var chatEmpty   = document.getElementById("chatEmpty");
+  var chatForm    = document.getElementById("chatForm");
+  var chatInput   = document.getElementById("chatInput");
+  var chatSend    = document.getElementById("chatSend");
+
+  var cards = {
+    stockout: { el: document.getElementById("card-stockout"), count: document.getElementById("count-stockout"), sub: document.getElementById("sub-stockout") },
+    expiry:   { el: document.getElementById("card-expiry"),   count: document.getElementById("count-expiry"),   sub: document.getElementById("sub-expiry")   },
+    dead:     { el: document.getElementById("card-dead"),     count: document.getElementById("count-dead"),     sub: document.getElementById("sub-dead")     },
+    ghost:    { el: document.getElementById("card-ghost"),    count: document.getElementById("count-ghost"),    sub: document.getElementById("sub-ghost")    },
+  };
+
+  /* ── Date ───────────────────────────────────────────────────── */
+  todayDateEl.textContent = new Date().toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+
+  /* ── Utility ────────────────────────────────────────────────── */
+  function esc(s) {
+    return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  }
+
+  /* ── Load stores from GET /api/data/stores ──────────────────── */
+  async function loadStores() {
+    try {
+      var res  = await fetch("/api/data/stores");
+      var data = await res.json();
+      (data.stores || []).forEach(function (s) {
+        var opt = document.createElement("option");
+        opt.value       = s.store_id;       // e.g. "S001"
+        opt.textContent = s.store_name;     // e.g. "MedPlus Downtown"
+        storeSelect.appendChild(opt);
+      });
+    } catch (_) { /* keep default "All Stores" option */ }
+  }
+
+  storeSelect.addEventListener("change", function () {
+    selectedStore = storeSelect.value;
+    if (report) renderCards();
+    if (activeCard) openDetail(activeCard);
+  });
+
+  /* ── Load attention data from GET /api/attention ────────────── */
+  async function loadAttention() {
+    setCardsState("loading");
+    try {
+      var res  = await fetch("/api/attention");
+      var data = await res.json();
+      if (data.status === "ok") {
+        report = data.report;
+        renderCards();
+      } else {
+        setCardsState("error");
+      }
+    } catch (_) {
+      setCardsState("error");
+    }
+  }
+
+  function setCardsState(state) {
+    var txt = state === "loading" ? "Loading…" : "Could not load";
+    Object.values(cards).forEach(function (c) {
+      c.count.textContent = state === "loading" ? "—" : "!";
+      c.sub.textContent   = txt;
+    });
+  }
+
+  /* Filter items that have a store_id field by the selected store */
+  function filterStore(items) {
+    if (selectedStore === "all" || !items) return items || [];
+    return items.filter(function (item) {
+      return !item.store_id || item.store_id === selectedStore;
+    });
+  }
+
+  function shortName(name, words) {
+    return String(name || "").split(" ").slice(0, words || 3).join(" ");
+  }
+
+  function renderCards() {
+    if (!report) return;
+    var stockouts = filterStore(report.stockout_risk || []);
+    var expiry    = filterStore(report.expiry_risk   || []);
+    var dead      = report.dead_stock  || [];
+    var ghost     = report.ghost_stock || [];
+
+    // Stockout
+    cards.stockout.count.textContent = stockouts.length;
+    cards.stockout.sub.textContent   = stockouts.length
+      ? shortName(stockouts[0].product_name, 3) + " — " + stockouts[0].days_left + "d left"
+      : "All clear ✓";
+
+    // Expiry
+    cards.expiry.count.textContent = expiry.length;
+    cards.expiry.sub.textContent   = expiry.length
+      ? shortName(expiry[0].product_name, 2) + " — " + expiry[0].days_to_expiry + "d"
+      : "None expiring soon ✓";
+
+    // Dead stock
+    cards.dead.count.textContent = dead.length;
+    cards.dead.sub.textContent   = dead.length
+      ? shortName(dead[0].product_name, 2) + " — " + dead[0].total_stock + " units"
+      : "All moving ✓";
+
+    // Ghost stock
+    cards.ghost.count.textContent = ghost.length;
+    cards.ghost.sub.textContent   = ghost.length
+      ? ghost.map(function (g) { return g.product_name.split(" ")[0]; }).join(", ")
+      : "None ✓";
+  }
+
+  /* ── Detail panel ───────────────────────────────────────────── */
+  var DETAIL_LABELS = {
+    stockout: "⚠ Stockout Risk — Running Low",
+    expiry:   "⏳ Near Expiry — Act Before Loss",
+    dead:     "📦 Dead Stock — Not Moving",
+    ghost:    "👻 Ghost Stock — Zero Sales (60 days)",
+  };
+
+  function getDetailItems(type) {
+    if (!report) return [];
+    switch (type) {
+      case "stockout": return filterStore(report.stockout_risk || []);
+      case "expiry":   return filterStore(report.expiry_risk   || []);
+      case "dead":     return report.dead_stock  || [];
+      case "ghost":    return report.ghost_stock || [];
+      default:         return [];
+    }
+  }
+
+  function metaText(type, item) {
+    switch (type) {
+      case "stockout": return item.current_stock + " units\n" + item.days_left + "d left";
+      case "expiry":   return item.days_to_expiry + "d\n"   + item.current_stock + " units";
+      case "dead":     return item.total_stock + " units\n0/day";
+      case "ghost":    return item.total_stock + " units\n0 ever";
+      default:         return "";
+    }
+  }
+
+  function openDetail(type) {
+    var isSame = activeCard === type && !detailPanel.hidden;
+    // Deactivate all cards
+    Object.values(cards).forEach(function (c) { c.el.classList.remove("active"); });
+
+    if (isSame) {
+      detailPanel.hidden = true;
+      activeCard = null;
+      return;
+    }
+
+    activeCard = type;
+    cards[type].el.classList.add("active");
+    detailTitle.textContent = DETAIL_LABELS[type];
+    detailList.innerHTML    = "";
+
+    var items = getDetailItems(type);
+    if (!items.length) {
+      detailList.innerHTML = "<div style='padding:.4rem 0;font-size:.8rem;color:var(--ink-soft)'>No items for this selection.</div>";
+    } else {
+      items.forEach(function (item) {
+        var row = document.createElement("div");
+        row.className = "detail-row";
+        row.innerHTML =
+          "<div>" +
+            "<div class='detail-name'>"   + esc(item.product_name) + "</div>" +
+            (item.store_name ? "<div class='detail-store'>" + esc(item.store_name) + "</div>" : "") +
+            "<div class='detail-action'>" + esc(item.action || "") + "</div>" +
+          "</div>" +
+          "<div class='detail-meta'>" + esc(metaText(type, item)) + "</div>";
+        detailList.appendChild(row);
+      });
+    }
+    detailPanel.hidden = false;
+  }
+
+  detailClose.addEventListener("click", function () {
+    detailPanel.hidden = true;
+    Object.values(cards).forEach(function (c) { c.el.classList.remove("active"); });
+    activeCard = null;
+  });
+
+  Object.keys(cards).forEach(function (type) {
+    cards[type].el.addEventListener("click",   function () { openDetail(type); });
+    cards[type].el.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDetail(type); }
+    });
+  });
+
+  /* ── Chat — POST /api/chat with {"question":"..."} ──────────── */
+  function scrollChat() { chatLog.scrollTop = chatLog.scrollHeight; }
+
+  function addUserMsg(text) {
+    if (chatEmpty && chatEmpty.parentNode === chatLog) chatEmpty.remove();
+    var el = document.createElement("div");
+    el.className   = "msg user";
+    el.textContent = text;
+    chatLog.appendChild(el);
+    scrollChat();
+  }
+
+  function addPending() {
+    var el = document.createElement("div");
+    el.className   = "msg assistant pending";
+    el.textContent = "Thinking…";
+    chatLog.appendChild(el);
+    scrollChat();
+    return el;
+  }
+
+  function resolveMsg(el, answer, facts) {
+    el.classList.remove("pending");
+    el.textContent = "";
+
+    var txt = document.createElement("div");
+    txt.textContent = answer;
+    el.appendChild(txt);
+
+    // Show "facts" (Python-computed numbers) as collapsible evidence
+    if (facts && Object.keys(facts).length > 0) {
+      var det = document.createElement("details");
+      det.className = "evidence";
+      var sum = document.createElement("summary");
+      sum.textContent = "Show numbers behind this";
+      det.appendChild(sum);
+      var body = document.createElement("div");
+      body.className   = "evidence-body";
+      body.textContent = JSON.stringify(facts, null, 2);
+      det.appendChild(body);
+      el.appendChild(det);
+    }
+    scrollChat();
+  }
+
+  function errorMsg(el, text) {
+    el.classList.remove("pending");
+    el.classList.add("is-error");
+    el.textContent = text || "Something went wrong. Try again.";
+    scrollChat();
+  }
+
+  chatForm.addEventListener("submit", async function (e) {
+    e.preventDefault();
+    var question = chatInput.value.trim();
+    if (!question) return;
+
+    chatInput.value    = "";
+    chatInput.disabled = true;
+    chatSend.disabled  = true;
+
+    addUserMsg(question);
+    var pending = addPending();
+
+    try {
+      // POST /api/chat  body: { "question": "..." }
+      var res  = await fetch("/api/chat", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ question: question }),   // field name: "question"
+      });
+      var data = await res.json();
+      if (data.answer) {
+        resolveMsg(pending, data.answer, data.facts);
+      } else {
+        errorMsg(pending, "I don't have data to answer that.");
+      }
+    } catch (_) {
+      errorMsg(pending, "Could not reach the server. Is the backend running?");
+    } finally {
+      chatInput.disabled = false;
+      chatSend.disabled  = false;
+      chatInput.focus();
+    }
+  });
+
+  /* ── Init ───────────────────────────────────────────────────── */
+  async function init() {
+    await loadStores();      // GET /api/data/stores
+    await loadAttention();   // GET /api/attention
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
