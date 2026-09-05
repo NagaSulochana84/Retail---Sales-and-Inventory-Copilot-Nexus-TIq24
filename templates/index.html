@@ -94,10 +94,11 @@
   .flag-card.dead     { border-left-color: var(--flag-dead);     color: var(--flag-dead); }
   .flag-card.ghost    { border-left-color: var(--flag-ghost);    color: var(--flag-ghost); }
 
-  .card-count { font-size: 1.8rem; font-weight: 700; font-family: var(--mono); line-height: 1; min-width: 2ch; }
-  .card-meta  { flex: 1; min-width: 0; }
-  .card-label { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--ink); }
-  .card-sub   { font-size: .72rem; color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: .1rem; }
+  .card-count { font-size: 2.2rem; font-weight: 700; font-family: var(--mono); line-height: 1; min-width: 2ch; }
+  .card-meta  { flex: 1; min-width: 0; display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+  .card-label { font-size: .95rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--ink); white-space: nowrap; }
+  .card-sep   { font-size: .8rem; color: var(--line); }
+  .card-sub   { font-size: .78rem; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
 
   /* ── Detail panel ───────────────────────────────────────────── */
   .detail-panel {
@@ -214,6 +215,7 @@
       <div class="card-count" id="count-stockout">—</div>
       <div class="card-meta">
         <div class="card-label">Stockout Risk</div>
+        <span class="card-sep">·</span>
         <div class="card-sub" id="sub-stockout">Loading…</div>
       </div>
     </div>
@@ -221,6 +223,7 @@
       <div class="card-count" id="count-expiry">—</div>
       <div class="card-meta">
         <div class="card-label">Near Expiry</div>
+        <span class="card-sep">·</span>
         <div class="card-sub" id="sub-expiry">Loading…</div>
       </div>
     </div>
@@ -228,6 +231,7 @@
       <div class="card-count" id="count-dead">—</div>
       <div class="card-meta">
         <div class="card-label">Dead Stock</div>
+        <span class="card-sep">·</span>
         <div class="card-sub" id="sub-dead">Loading…</div>
       </div>
     </div>
@@ -235,6 +239,7 @@
       <div class="card-count" id="count-ghost">—</div>
       <div class="card-meta">
         <div class="card-label">Ghost Stock</div>
+        <span class="card-sep">·</span>
         <div class="card-sub" id="sub-ghost">Loading…</div>
       </div>
     </div>
@@ -361,33 +366,34 @@
 
   function renderCards() {
     if (!report) return;
+    // All 4 now have store_id — filterStore works for all
     var stockouts = filterStore(report.stockout_risk || []);
     var expiry    = filterStore(report.expiry_risk   || []);
-    var dead      = report.dead_stock  || [];
-    var ghost     = report.ghost_stock || [];
+    var dead      = filterStore(report.dead_stock    || []);
+    var ghost     = filterStore(report.ghost_stock   || []);
 
-    // Stockout
+    // Stockout card
     cards.stockout.count.textContent = stockouts.length;
     cards.stockout.sub.textContent   = stockouts.length
       ? shortName(stockouts[0].product_name, 3) + " — " + stockouts[0].days_left + "d left"
       : "All clear ✓";
 
-    // Expiry
+    // Expiry card
     cards.expiry.count.textContent = expiry.length;
     cards.expiry.sub.textContent   = expiry.length
       ? shortName(expiry[0].product_name, 2) + " — " + expiry[0].days_to_expiry + "d"
       : "None expiring soon ✓";
 
-    // Dead stock
+    // Dead stock card (current_stock per store)
     cards.dead.count.textContent = dead.length;
     cards.dead.sub.textContent   = dead.length
-      ? shortName(dead[0].product_name, 2) + " — " + dead[0].total_stock + " units"
+      ? shortName(dead[0].product_name, 2) + " — " + dead[0].current_stock + " units"
       : "All moving ✓";
 
-    // Ghost stock
+    // Ghost stock card (current_stock per store)
     cards.ghost.count.textContent = ghost.length;
     cards.ghost.sub.textContent   = ghost.length
-      ? ghost.map(function (g) { return g.product_name.split(" ")[0]; }).join(", ")
+      ? shortName(ghost[0].product_name, 2) + " — " + ghost[0].current_stock + " units"
       : "None ✓";
   }
 
@@ -414,8 +420,8 @@
     switch (type) {
       case "stockout": return item.current_stock + " units\n" + item.days_left + "d left";
       case "expiry":   return item.days_to_expiry + "d\n"   + item.current_stock + " units";
-      case "dead":     return item.total_stock + " units\n0/day";
-      case "ghost":    return item.total_stock + " units\n0 ever";
+      case "dead":     return item.current_stock + " units\n0/day";
+      case "ghost":    return item.current_stock + " units\n0 ever";
       default:         return "";
     }
   }
@@ -490,6 +496,91 @@
     return el;
   }
 
+  /* ── Format facts as readable summary (not raw JSON) ───────── */
+  function formatFacts(facts) {
+    if (!facts || Object.keys(facts).length === 0) return "";
+    var lines = [];
+    var intent = facts.intent;
+
+    if (facts.found === false) {
+      if (facts.reason === "product_not_found") {
+        lines.push("❌ Product not found: " + (facts.searched_for || ""));
+        if (facts.suggestions && facts.suggestions.length)
+          lines.push("🔍 Did you mean: " + facts.suggestions.join(", ") + "?");
+      } else {
+        lines.push("ℹ️ " + (facts.reason || "Cannot answer from available data"));
+        if (facts.what_i_have) lines.push("📂 Available: " + facts.what_i_have);
+      }
+      return lines.join("\n");
+    }
+
+    switch (intent) {
+      case "stock_level":
+        lines.push("📦 Stock — " + facts.product + " @ " + facts.store);
+        lines.push("• Stock: " + facts.stock_count + " units");
+        if (facts.avg_daily_rate_7d != null) lines.push("• Selling rate: " + facts.avg_daily_rate_7d + " units/day (7d avg)");
+        if (facts.days_left != null)         lines.push("• Days left: " + facts.days_left);
+        (facts.breakdown || []).forEach(function(b) {
+          lines.push("  – " + b.store + ": " + b.stock + " units (exp: " + b.expiry + ")");
+        });
+        break;
+      case "sales_summary":
+        lines.push("📊 Sales — " + facts.product + " @ " + facts.store);
+        lines.push("• Period: last " + facts.period_days + " days (" + facts.period_from + " to " + facts.period_to + ")");
+        lines.push("• Total sold: " + facts.total_units_sold + " units");
+        lines.push("• Avg/day: " + facts.avg_units_per_day + " units");
+        if (facts.estimated_revenue_inr) lines.push("• Est. revenue: ₹" + facts.estimated_revenue_inr);
+        break;
+      case "low_stock":
+        lines.push("⚠ " + facts.count + " stockout risk(s) @ " + facts.store);
+        (facts.items || []).slice(0, 5).forEach(function(item) {
+          lines.push("• " + item.product_name + " — " + item.current_stock + " units, " + item.days_left + "d left @ " + item.store_name);
+        });
+        break;
+      case "expiry_risk":
+        lines.push("⏳ " + facts.count + " item(s) near expiry @ " + facts.store);
+        (facts.items || []).slice(0, 5).forEach(function(item) {
+          lines.push("• " + item.product_name + " — expires in " + item.days_to_expiry + "d, " + item.current_stock + " units @ " + item.store_name);
+        });
+        break;
+      case "dead_stock":
+        lines.push("📦 " + facts.count + " dead stock item(s)");
+        lines.push("Criteria: " + facts.criteria);
+        (facts.items || []).slice(0, 5).forEach(function(item) {
+          lines.push("• " + item.product_name + " @ " + (item.store_name || "all stores") + " — " + item.current_stock + " units, " + item.daily_rate + " units/day");
+        });
+        break;
+      case "sales_spike_drop":
+        (facts.spikes || []).forEach(function(s) {
+          lines.push("📈 Spike: " + s.product_name + " — " + s.spike_factor + "× (" + s.prior_avg + " → " + s.recent_avg + " units/day)");
+        });
+        (facts.drops || []).forEach(function(d) {
+          lines.push("📉 Drop: " + d.product_name + " — " + d.prior_avg + " → " + d.recent_avg + " units/day");
+        });
+        break;
+      case "store_comparison":
+        lines.push("🏪 Performance last " + facts.period_days + " days:");
+        (facts.ranked_stores || []).forEach(function(s, i) {
+          var tag = i === 0 ? "🔴 Lowest" : (i === facts.ranked_stores.length - 1 ? "🟢 Highest" : "🟡");
+          lines.push(tag + " " + s.store_name + " — " + s.total_units_sold + " units | ₹" + s.estimated_revenue_inr);
+        });
+        break;
+      case "attention_summary":
+        var sm = facts.summary || {};
+        lines.push("📋 Today at a glance:");
+        lines.push("• Stockout risks: " + (sm.stockout_count || 0));
+        lines.push("• Near expiry:    " + (sm.expiry_count || 0));
+        lines.push("• Dead stock:     " + (sm.dead_stock_count || 0));
+        lines.push("• Sales spikes:   " + (sm.spike_count || 0));
+        lines.push("• Sales drops:    " + (sm.drop_count || 0));
+        break;
+      default:
+        // Out-of-scope or unknown — show honest_message if present
+        if (facts.honest_message) lines.push("ℹ️ " + facts.honest_message);
+    }
+    return lines.join("\n");
+  }
+
   function resolveMsg(el, answer, facts) {
     el.classList.remove("pending");
     el.textContent = "";
@@ -498,8 +589,8 @@
     txt.textContent = answer;
     el.appendChild(txt);
 
-    // Show "facts" (Python-computed numbers) as collapsible evidence
-    if (facts && Object.keys(facts).length > 0) {
+    var summary = formatFacts(facts);
+    if (summary) {
       var det = document.createElement("details");
       det.className = "evidence";
       var sum = document.createElement("summary");
@@ -507,7 +598,7 @@
       det.appendChild(sum);
       var body = document.createElement("div");
       body.className   = "evidence-body";
-      body.textContent = JSON.stringify(facts, null, 2);
+      body.textContent = summary;
       det.appendChild(body);
       el.appendChild(det);
     }
@@ -534,11 +625,14 @@
     var pending = addPending();
 
     try {
-      // POST /api/chat  body: { "question": "..." }
+      // POST /api/chat — send question + current store context
+      var body = { question: question };
+      if (selectedStore !== "all") body.store_id = selectedStore;  // store context
+
       var res  = await fetch("/api/chat", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ question: question }),   // field name: "question"
+        body:    JSON.stringify(body),
       });
       var data = await res.json();
       if (data.answer) {

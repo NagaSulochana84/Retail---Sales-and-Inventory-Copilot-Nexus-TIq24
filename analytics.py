@@ -102,41 +102,39 @@ def check_stockout_risk() -> list[dict]:
 
 def check_dead_stock() -> list[dict]:
     """
-    Per product (across all stores): if recent DEAD_STOCK_WINDOW_DAYS avg < threshold
-    AND total stock is large → dead/overstock.
-    Assumption: if no one has bought it in 3 weeks, demand has stalled.
+    Per (store, product): if store-specific avg sales < threshold
+    AND current stock at that store is large → dead/overstock.
+    Each item has store_id so frontend can filter by store.
     """
     flags = []
     pmap  = data_loader.get_product_map()
+    smap  = data_loader.get_store_map()
 
-    seen = set()
     for row in data_loader.get_stock():
-        pid = row["product_id"]
-        if pid in seen:
-            continue
-        seen.add(pid)
+        sid   = row["store_id"]
+        pid   = row["product_id"]
+        stock = row["current_stock"]
 
-        total_stk = sum(
-            r["current_stock"] for r in data_loader.get_stock(product_id=pid)
-        )
-        if total_stk < DEAD_STOCK_MIN_UNITS:
+        if stock < DEAD_STOCK_MIN_UNITS:
             continue
 
-        recent_rate = _avg_daily(pid, days=DEAD_STOCK_WINDOW_DAYS)
+        recent_rate = _avg_daily_by_store(pid, sid, days=DEAD_STOCK_WINDOW_DAYS)
         if recent_rate < DEAD_STOCK_MAX_RATE:
             flags.append({
-                "flag":          "dead_stock",
-                "product_id":    pid,
-                "product_name":  pmap.get(pid, {}).get("product_name", pid),
-                "category":      pmap.get(pid, {}).get("category", ""),
-                "total_stock":   total_stk,
-                "daily_rate":    recent_rate,
-                "window_days":   DEAD_STOCK_WINDOW_DAYS,
-                "assumption":    f"Avg sales < {DEAD_STOCK_MAX_RATE} units/day over last {DEAD_STOCK_WINDOW_DAYS} days",
-                "action":        "Consider promotion, return to supplier, or inter-branch transfer.",
+                "flag":         "dead_stock",
+                "store_id":     sid,
+                "store_name":   smap.get(sid, {}).get("store_name", sid),
+                "product_id":   pid,
+                "product_name": pmap.get(pid, {}).get("product_name", pid),
+                "category":     pmap.get(pid, {}).get("category", ""),
+                "current_stock": stock,
+                "daily_rate":   recent_rate,
+                "window_days":  DEAD_STOCK_WINDOW_DAYS,
+                "assumption":   f"Avg sales < {DEAD_STOCK_MAX_RATE} units/day over last {DEAD_STOCK_WINDOW_DAYS} days at this store",
+                "action":       "Consider promotion, return to supplier, or inter-branch transfer.",
             })
 
-    return sorted(flags, key=lambda x: x["total_stock"], reverse=True)
+    return sorted(flags, key=lambda x: x["current_stock"], reverse=True)
 
 
 def check_sales_spikes_and_drops() -> list[dict]:
@@ -234,31 +232,36 @@ def check_expiry_risk() -> list[dict]:
 
 def check_ghost_stock() -> list[dict]:
     """
-    Products with ZERO sales in the entire 60-day history AND non-zero stock.
-    Hardest category — product has never moved since last restock.
+    Per (store, product): zero sales at THAT store in entire 60-day history AND stock > 0.
+    Each item has store_id so frontend can filter correctly by store.
     """
     flags = []
     pmap  = data_loader.get_product_map()
-    seen  = set()
+    smap  = data_loader.get_store_map()
 
     for row in data_loader.get_stock():
-        pid = row["product_id"]
-        if pid in seen:
+        sid   = row["store_id"]
+        pid   = row["product_id"]
+        stock = row["current_stock"]
+
+        if stock <= 0:
             continue
-        seen.add(pid)
 
-        total_sales = sum(r["units_sold"] for r in data_loader.get_sales(product_id=pid))
-        total_stk   = sum(r["current_stock"] for r in data_loader.get_stock(product_id=pid))
-
-        if total_sales == 0 and total_stk > 0:
+        # Check sales at THIS specific store only
+        store_sales = sum(
+            r["units_sold"] for r in data_loader.get_sales(store_id=sid, product_id=pid)
+        )
+        if store_sales == 0:
             flags.append({
                 "flag":         "ghost_stock",
+                "store_id":     sid,
+                "store_name":   smap.get(sid, {}).get("store_name", sid),
                 "product_id":   pid,
                 "product_name": pmap.get(pid, {}).get("product_name", pid),
                 "category":     pmap.get(pid, {}).get("category", ""),
-                "total_stock":  total_stk,
-                "assumption":   "Zero units sold across all 3 stores in entire 60-day history",
-                "action":       "Investigate: wrong shelf location, pricing, or product no longer in demand.",
+                "current_stock": stock,
+                "assumption":   "Zero units sold at this store in entire 60-day history",
+                "action":       "Investigate: wrong shelf location, pricing, or no demand.",
             })
     return flags
 

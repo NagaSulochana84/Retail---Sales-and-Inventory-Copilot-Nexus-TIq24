@@ -202,6 +202,7 @@ def chat():
     try:
         body     = request.get_json(force=True, silent=True) or {}
         question = (body.get("question") or "").strip()
+        store_id = body.get("store_id") or None   # optional store context from frontend
 
         if not question:
             return jsonify({
@@ -209,7 +210,8 @@ def chat():
                 "answer": "Please provide a question in the request body: {\"question\": \"...\"}"
             }), 400
 
-        result = qa_pipeline.answer_question(question, client, CHAT_MODEL)
+        result = qa_pipeline.answer_question(question, client, CHAT_MODEL,
+                                             store_id=store_id)
         return jsonify({"status": "ok", **result})
 
     except Exception as exc:

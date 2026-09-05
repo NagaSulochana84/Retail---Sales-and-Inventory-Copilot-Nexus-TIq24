@@ -217,7 +217,7 @@ def fetch_facts(intent: dict) -> dict:
         return {
             "found": True, "intent": itype,
             "product": pname(product_id), "store": sname(store_id),
-            "total_stock": total, "breakdown": breakdown,
+            "stock_count": total, "breakdown": breakdown,
             "avg_daily_rate_7d": rate,
             "days_left": round(total / rate, 1) if rate > 0 else "N/A (no recent sales)",
         }
@@ -267,11 +267,13 @@ def fetch_facts(intent: dict) -> dict:
 
     elif itype == "dead_stock":
         flags = analytics.check_dead_stock()
+        if store_id:
+            flags = [f for f in flags if f["store_id"] == store_id]
         return {
             "found": True, "intent": itype,
             "count": len(flags),
             "items": flags,
-            "criteria": "Less than 0.5 units/day sold over the last 21 days with 30+ units in stock.",
+            "criteria": "Less than 0.5 units/day sold over last 21 days with 30+ units at that store.",
         }
 
     elif itype == "sales_spike_drop":
@@ -340,27 +342,23 @@ def fetch_facts(intent: dict) -> dict:
 
 ANSWER_PROMPT = """You are PharmaCopilot — an honest, empathetic pharmacy inventory assistant.
 
-STRICT RULES (violating any = wrong answer):
-1. Use ONLY the numbers in the "Python-computed facts" block below. Never invent or estimate.
-2. Start with the direct factual answer — lead with the key number(s).
-3. Keep response to 3-5 sentences. Be warm but precise.
-4. If facts contain "found": false and reason "product_not_found":
-   - Say the product was not found in the system.
-   - Mention the suggestions if any.
-   - Do NOT make up stock/sales data for it.
-5. If facts contain "found": false (other reasons):
-   - Apologise briefly and explain honestly what data you do and don't have.
-   - Never guess.
-6. For "out_of_scope" facts: give the specific honest message from the facts block.
-7. Always end your response with exactly this line (replace nothing):
-   {footer}
+STRICT RULES:
+1. Use ONLY the numbers in the "Python-computed facts" below. Never invent or estimate.
+2. Format your answer as:
+   - One short summary sentence (plain English, lead with the key number)
+   - 2–4 bullet points (•) with specific figures
+   - One action line if relevant
+3. No long paragraphs. Short. Clear. Human.
+4. If facts contain "found": false — honestly explain what's missing. No guessing.
+5. If facts contain "out_of_scope" — use the honest_message from facts. No guessing.
+6. End every answer with exactly: {footer}
 
 Manager's question: "{question}"
 
 Python-computed facts (your ONLY source of truth):
 {facts}
 
-Your answer:"""
+Your answer (summary sentence + bullets + footer):"""
 
 
 def phrase_answer(question: str, facts: dict, gemini_client, chat_model: str) -> str:
@@ -429,23 +427,21 @@ OOS_MESSAGES = {
 
 # ── Master pipeline ───────────────────────────────────────────────────────────
 
-def answer_question(question: str, gemini_client, chat_model: str) -> dict:
+def answer_question(question: str, gemini_client, chat_model: str,
+                    store_id: str | None = None) -> dict:
     """
     Full Q&A pipeline:
-      1. Detect out-of-scope questions early (specific honest message per category)
+      1. Detect out-of-scope early
       2. Gemini parses intent
-      3. Python fetches facts (includes product-not-found trap handling)
-      4. Gemini phrases answer using ONLY those facts
+      3. Python fetches facts (store_id from frontend overrides parsed intent if provided)
+      4. Gemini phrases bullet-point answer
     """
     if not question or not question.strip():
         return {
-            "question": question,
-            "intent":   "empty",
-            "facts":    {},
+            "question": question, "intent": "empty", "facts": {},
             "answer":   f"Please ask a question about your pharmacy's sales or inventory.\n{DATA_FOOTER}",
         }
 
-    # Step 0 — out-of-scope early exit
     oos = _detect_oos(question)
     if oos:
         facts  = OOS_MESSAGES[oos]
@@ -454,30 +450,21 @@ def answer_question(question: str, gemini_client, chat_model: str) -> dict:
                 "facts": facts, "answer": answer}
 
     try:
-        # Step 1 — Gemini: parse intent
         intent = parse_intent(question, gemini_client, chat_model)
 
-        # Step 2 — Python: fetch facts
-        facts  = fetch_facts(intent)
+        # If frontend sent a specific store context, let it override the parsed store
+        if store_id and store_id != "all":
+            intent["store_id"] = store_id
 
-        # Step 3 — Gemini: phrase answer
+        facts  = fetch_facts(intent)
         answer = phrase_answer(question, facts, gemini_client, chat_model)
 
-        return {
-            "question": question,
-            "intent":   intent.get("intent", "unknown"),
-            "facts":    facts,
-            "answer":   answer,
-        }
+        return {"question": question, "intent": intent.get("intent", "unknown"),
+                "facts": facts, "answer": answer}
 
     except Exception as exc:
         return {
-            "question": question,
-            "intent":   "error",
-            "facts":    {},
-            "answer":   (
-                f"Sorry, something went wrong on my end. Please try again.\n{DATA_FOOTER}"
-            ),
-            "error":    str(exc),
-            "trace":    traceback.format_exc(),
+            "question": question, "intent": "error", "facts": {},
+            "answer":   f"Sorry, something went wrong on my end. Please try again.\n{DATA_FOOTER}",
+            "error":    str(exc), "trace": traceback.format_exc(),
         }
