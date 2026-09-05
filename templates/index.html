@@ -550,6 +550,13 @@
           lines.push("• " + item.product_name + " @ " + (item.store_name || "all stores") + " — " + item.current_stock + " units, " + item.daily_rate + " units/day");
         });
         break;
+      case "ghost_stock":
+        lines.push("👻 " + facts.count + " ghost stock item(s)");
+        lines.push("Criteria: " + facts.criteria);
+        (facts.items || []).slice(0, 5).forEach(function(item) {
+          lines.push("• " + item.product_name + " @ " + (item.store_name || "all stores") + " — " + item.current_stock + " units, 0 sales ever");
+        });
+        break;
       case "sales_spike_drop":
         (facts.spikes || []).forEach(function(s) {
           lines.push("📈 Spike: " + s.product_name + " — " + s.spike_factor + "× (" + s.prior_avg + " → " + s.recent_avg + " units/day)");

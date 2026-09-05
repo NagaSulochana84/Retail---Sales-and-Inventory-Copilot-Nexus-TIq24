@@ -128,7 +128,8 @@ Intents available:
   sales_summary      — how a product sold in a time period
   low_stock          — what products are at stockout risk
   expiry_risk        — what is expiring soon
-  dead_stock         — what is overstocked / not moving
+  dead_stock         — what is overstocked / not moving (low/near-zero sales)
+  ghost_stock        — products with ZERO sales ever (never sold at all)
   sales_spike_drop   — unusual sales trends
   store_comparison   — which store is performing best/worst
   attention_summary  — general "what needs attention today"
@@ -274,6 +275,17 @@ def fetch_facts(intent: dict) -> dict:
             "count": len(flags),
             "items": flags,
             "criteria": "Less than 0.5 units/day sold over last 21 days with 30+ units at that store.",
+        }
+
+    elif itype == "ghost_stock":
+        flags = analytics.check_ghost_stock()
+        if store_id:
+            flags = [f for f in flags if f["store_id"] == store_id]
+        return {
+            "found": True, "intent": itype,
+            "count": len(flags),
+            "items": flags,
+            "criteria": "Zero units sold at this store in the entire 60-day data period.",
         }
 
     elif itype == "sales_spike_drop":
