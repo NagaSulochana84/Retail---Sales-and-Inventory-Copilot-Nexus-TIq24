@@ -1,23 +1,26 @@
 """
 PharmaCopilot — app.py
-Step 1: Flask server on port 8000 + Gemini hello-world end-to-end check.
+Step 2: Flask server + Gemini (google-genai SDK) + CSV data layer.
 
-Run:  python app.py
-Test: http://localhost:8000/
-      http://localhost:8000/api/health
+Run:  py -3.12 app.py
+Test: http://localhost:8000/api/health
       http://localhost:8000/api/gemini-test
-
-Note: Uses Python built-in csv module — no pandas/polars dependency.
+      http://localhost:8000/api/data/summary
+      http://localhost:8000/api/data/stores
+      http://localhost:8000/api/data/products
+      http://localhost:8000/api/data/stock?store_id=S001
 """
 
 import os
 import traceback
 
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from dotenv import load_dotenv
-import google.generativeai as genai
+from google import genai
 
-# ── Load environment variables from .env (GEMINI_API_KEY lives here) ──────────
+import data_loader
+
+# ── Load environment variables from .env ──────────────────────────────────────
 load_dotenv()
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -27,10 +30,11 @@ if not GEMINI_API_KEY:
         "Create a .env file with: GEMINI_API_KEY=your_key_here"
     )
 
-genai.configure(api_key=GEMINI_API_KEY)
+# ── Gemini client (new google-genai SDK) ──────────────────────────────────────
+client = genai.Client(api_key=GEMINI_API_KEY)
 
-# ── Model names — change here if needed, never scattered in code ───────────────
-CHAT_MODEL      = "gemini-2.5-flash"   # free tier chat/generation model
+# ── Model names — single place to update ──────────────────────────────────────
+CHAT_MODEL      = "gemini-2.5-flash"      # free tier chat/generation model
 EMBEDDING_MODEL = "gemini-embedding-001"  # for RAG/semantic search (Step 4)
 
 # ── Flask app ──────────────────────────────────────────────────────────────────
@@ -39,53 +43,50 @@ app.config["JSON_SORT_KEYS"] = False
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ROUTES
+# ROUTES — General
 # ─────────────────────────────────────────────────────────────────────────────
 
 @app.route("/")
 def index():
-    """Root — quick confirmation the server is alive."""
     return jsonify({
         "app":    "PharmaCopilot",
         "track":  "PS03 — NexusTiq24",
         "status": "running",
         "endpoints": {
-            "health":      "/api/health",
-            "gemini_test": "/api/gemini-test",
+            "health":       "/api/health",
+            "gemini_test":  "/api/gemini-test",
+            "data_summary": "/api/data/summary",
+            "stores":       "/api/data/stores",
+            "products":     "/api/data/products",
+            "stock":        "/api/data/stock",
         }
     })
 
 
 @app.route("/api/health")
 def health():
-    """Health-check — judges can hit this to confirm the server is up."""
     return jsonify({"status": "ok", "port": 8000})
 
 
 @app.route("/api/gemini-test")
 def gemini_test():
-    """
-    Live Gemini call — proves the API key works end-to-end.
-    Gemini is ONLY used for language — no math, no invented numbers.
-    """
+    """Live Gemini call — language only, no math, no invented numbers."""
     try:
-        model = genai.GenerativeModel(CHAT_MODEL)
         prompt = (
             "You are PharmaCopilot, an AI assistant for a pharmacy chain. "
             "Greet the pharmacy manager in one short sentence and mention "
             "that you are ready to help with sales and inventory questions."
         )
-        response = model.generate_content(prompt)
-        gemini_reply = response.text.strip()
-
+        response = client.models.generate_content(
+            model=CHAT_MODEL,
+            contents=prompt
+        )
         return jsonify({
             "status":       "ok",
             "model":        CHAT_MODEL,
-            "gemini_reply": gemini_reply
+            "gemini_reply": response.text.strip()
         })
-
     except Exception as exc:
-        # Graceful error — never crash, always return JSON
         return jsonify({
             "status": "error",
             "error":  str(exc),
@@ -94,12 +95,99 @@ def gemini_test():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# ROUTES — Data layer (Step 2)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route("/api/data/summary")
+def data_summary():
+    """Snapshot of loaded data — judges can verify CSV data is live."""
+    try:
+        stores   = data_loader.get_stores()
+        products = data_loader.get_products()
+        sales    = data_loader.get_sales()
+        stock    = data_loader.get_stock()
+
+        dates     = [r["date"] for r in sales]
+        date_from = min(dates) if dates else "n/a"
+        date_to   = max(dates) if dates else "n/a"
+
+        return jsonify({
+            "status": "ok",
+            "loaded": {
+                "stores":      len(stores),
+                "products":    len(products),
+                "sales_rows":  len(sales),
+                "stock_rows":  len(stock),
+                "sales_from":  date_from,
+                "sales_to":    date_to,
+            }
+        })
+    except Exception as exc:
+        return jsonify({"status": "error", "error": str(exc)}), 500
+
+
+@app.route("/api/data/stores")
+def api_stores():
+    """List all stores."""
+    try:
+        return jsonify({"status": "ok", "stores": data_loader.get_stores()})
+    except Exception as exc:
+        return jsonify({"status": "error", "error": str(exc)}), 500
+
+
+@app.route("/api/data/products")
+def api_products():
+    """
+    List products. Optional: ?category=OTC+Medicine
+    """
+    try:
+        products = data_loader.get_products()
+        category = request.args.get("category")
+        if category:
+            products = [p for p in products if p["category"] == category]
+        return jsonify({
+            "status":   "ok",
+            "count":    len(products),
+            "products": products
+        })
+    except Exception as exc:
+        return jsonify({"status": "error", "error": str(exc)}), 500
+
+
+@app.route("/api/data/stock")
+def api_stock():
+    """
+    Stock snapshot. Optional: ?store_id=S001 or ?product_id=P004
+    """
+    try:
+        store_id   = request.args.get("store_id")
+        product_id = request.args.get("product_id")
+        rows       = data_loader.get_stock(store_id=store_id,
+                                           product_id=product_id)
+        pmap = data_loader.get_product_map()
+        smap = data_loader.get_store_map()
+        enriched = [{
+            **r,
+            "product_name": pmap.get(r["product_id"], {}).get("product_name", ""),
+            "store_name":   smap.get(r["store_id"],   {}).get("store_name",   ""),
+        } for r in rows]
+
+        return jsonify({"status": "ok", "count": len(enriched), "stock": enriched})
+    except Exception as exc:
+        return jsonify({"status": "error", "error": str(exc)}), 500
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # ENTRY POINT
 # ─────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
+    print("Loading CSV data...")
+    data_loader.load_all()
+
     print("=" * 55)
     print("  PharmaCopilot — NexusTiq24 (TRACK PS03)")
-    print("  Server: http://localhost:8000")
-    print("  Gemini test: http://localhost:8000/api/gemini-test")
+    print("  Server : http://localhost:8000")
+    print("  Data   : http://localhost:8000/api/data/summary")
     print("=" * 55)
+
     app.run(host="0.0.0.0", port=8000, debug=False)
