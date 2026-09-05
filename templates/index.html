@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>PharmaCopilot — Sales &amp; Inventory Copilot</title>
+<title>PharmaCopilot</title>
 <style>
   :root {
     --bg:            #eef1ec;
@@ -17,157 +17,141 @@
     --flag-expiry:   #b3901f;
     --flag-dead:     #6c7570;
     --flag-ghost:    #6f6a95;
+    --flag-spike:    #2d7d46;
+    --flag-drop:     #8b3a1a;
     --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     --mono: ui-monospace, "SF Mono", Consolas, monospace;
   }
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 15px; line-height: 1.45; }
 
-  html, body {
-    height: 100%;
-    overflow: hidden;
-    background: var(--bg);
-    color: var(--ink);
-    font-family: var(--sans);
-    font-size: 15px;
-    line-height: 1.45;
-  }
+  #app { height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
 
-  #app {
-    height: 100vh;
-    height: 100dvh;
-    display: flex;
-    flex-direction: column;
-  }
-
-  /* ── Topbar ─────────────────────────────────────────────────── */
+  /* ── Topbar ── */
   .topbar {
     flex: 0 0 auto;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    height: 3rem;
-    padding: 0 1rem;
+    display: flex; align-items: center;
+    height: 3rem; padding: 0 1rem;
     border-bottom: 1px solid var(--line);
     background: var(--panel);
-    gap: 0.75rem;
+    gap: .75rem;
   }
   .wordmark { font-weight: 700; font-size: 1rem; letter-spacing: .01em; white-space: nowrap; }
   .wordmark span { color: var(--accent); }
-  .topbar-right { display: flex; align-items: center; gap: .6rem; }
-  #storeSelect {
+
+  /* Nav tabs */
+  .nav { display: flex; gap: 2px; background: var(--bg); border-radius: 6px; padding: 2px; }
+  .nav-btn {
+    font-family: var(--sans); font-size: .8rem; font-weight: 600;
+    border: none; background: none; border-radius: 4px;
+    padding: .25rem .75rem; cursor: pointer;
+    color: var(--ink-soft); white-space: nowrap;
+    transition: background .12s, color .12s;
+  }
+  .nav-btn.active { background: var(--panel); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.1); }
+
+  .topbar-right { margin-left: auto; display: flex; align-items: center; gap: .6rem; }
+  select {
     font-family: var(--sans); font-size: .82rem;
     background: var(--bg); color: var(--ink);
     border: 1px solid var(--line); border-radius: 5px;
-    padding: .3rem .5rem; cursor: pointer; max-width: 48vw;
+    padding: .3rem .5rem; cursor: pointer; max-width: 44vw;
   }
-  .date-badge { font-size: .78rem; color: var(--ink-soft); white-space: nowrap; }
+  .date-badge { font-size: .76rem; color: var(--ink-soft); white-space: nowrap; }
 
-  /* ── Flag cards grid ────────────────────────────────────────── */
+  /* ── Views ── */
+  .view { display: none; flex: 1 1 auto; min-height: 0; flex-direction: column; overflow: hidden; }
+  .view.active { display: flex; }
+
+  /* ── Dashboard — 6 flag cards ── */
   .flag-grid {
     flex: 0 0 auto;
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: .5rem;
-    padding: .6rem 1rem;
+    gap: .45rem;
+    padding: .55rem 1rem;
     border-bottom: 1px solid var(--line);
   }
+
   .flag-card {
     background: var(--panel);
     border: 1px solid var(--line);
     border-left-width: 3px;
     border-radius: 7px;
-    padding: .55rem .7rem;
+    padding: .5rem .65rem;
     cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: .55rem;
+    display: flex; align-items: center; gap: .5rem;
     user-select: none;
     transition: opacity .12s;
   }
-  .flag-card:hover   { opacity: .82; }
-  .flag-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-  .flag-card.active  { box-shadow: 0 0 0 2px currentColor; }
+  .flag-card:hover        { opacity: .82; }
+  .flag-card:focus-visible{ outline: 2px solid var(--accent); }
+  .flag-card.active       { box-shadow: 0 0 0 2px currentColor; }
 
   .flag-card.stockout { border-left-color: var(--flag-stockout); color: var(--flag-stockout); }
   .flag-card.expiry   { border-left-color: var(--flag-expiry);   color: var(--flag-expiry); }
   .flag-card.dead     { border-left-color: var(--flag-dead);     color: var(--flag-dead); }
   .flag-card.ghost    { border-left-color: var(--flag-ghost);    color: var(--flag-ghost); }
+  .flag-card.spike    { border-left-color: var(--flag-spike);    color: var(--flag-spike); }
+  .flag-card.drop     { border-left-color: var(--flag-drop);     color: var(--flag-drop); }
 
-  .card-count { font-size: 2.2rem; font-weight: 700; font-family: var(--mono); line-height: 1; min-width: 2ch; }
-  .card-meta  { flex: 1; min-width: 0; display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
-  .card-label { font-size: .95rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--ink); white-space: nowrap; }
-  .card-sep   { font-size: .8rem; color: var(--line); }
-  .card-sub   { font-size: .78rem; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+  .card-count { font-size: 2rem; font-weight: 700; font-family: var(--mono); line-height: 1; min-width: 2ch; }
+  .card-meta  {
+    flex: 1; min-width: 0;
+    display: flex; align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+  }
+  .card-label { font-size: .9rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--ink); white-space: nowrap; }
+  .card-sub   { font-size: .75rem; color: var(--ink-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; }
 
-  /* ── Detail panel ───────────────────────────────────────────── */
+  /* ── Detail panel ── */
   .detail-panel {
-    flex: 0 0 auto;
-    max-height: 185px;
-    overflow-y: auto;
-    border-bottom: 1px solid var(--line);
-    background: var(--panel);
+    flex: 0 0 auto; max-height: 185px; overflow-y: auto;
+    border-bottom: 1px solid var(--line); background: var(--panel);
   }
   .detail-panel[hidden] { display: none; }
-
   .detail-header {
     position: sticky; top: 0; z-index: 1;
     background: var(--panel);
     display: flex; justify-content: space-between; align-items: center;
-    padding: .35rem 1rem;
-    border-bottom: 1px solid var(--line);
+    padding: .35rem 1rem; border-bottom: 1px solid var(--line);
   }
   .detail-title { font-size: .8rem; font-weight: 600; color: var(--ink); }
-  .detail-close {
-    background: none; border: none; cursor: pointer;
-    color: var(--ink-soft); font-size: 1.1rem; line-height: 1; padding: 0 .25rem;
+  .detail-close { background: none; border: none; cursor: pointer; color: var(--ink-soft); font-size: 1.1rem; line-height: 1; padding: 0 .25rem; }
+  .detail-list  { padding: .25rem 1rem .5rem; }
+  .detail-row   {
+    display: grid; grid-template-columns: 1fr auto;
+    column-gap: .5rem; padding: .3rem 0;
+    border-bottom: 1px dashed var(--line); font-size: .8rem;
   }
-
-  .detail-list { padding: .25rem 1rem .5rem; }
-  .detail-row {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    column-gap: .5rem;
-    padding: .3rem 0;
-    border-bottom: 1px dashed var(--line);
-    font-size: .8rem;
-  }
-  .detail-row:last-child { border-bottom: none; }
+  .detail-row:last-child  { border-bottom: none; }
   .detail-name   { font-weight: 500; color: var(--ink); }
   .detail-store  { font-size: .7rem; color: var(--ink-soft); }
   .detail-action { font-size: .7rem; color: var(--accent); grid-column: 1 / -1; margin-top: .1rem; }
-  .detail-meta   { font-family: var(--mono); font-size: .76rem; color: var(--ink-soft); text-align: right; white-space: pre; }
+  .detail-meta   { font-family: var(--mono); font-size: .74rem; color: var(--ink-soft); text-align: right; white-space: pre; }
 
-  /* ── Chat ───────────────────────────────────────────────────── */
-  .chat { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-
+  /* ── Chat view ── */
   .chat-log {
-    flex: 1 1 auto; min-height: 0;
-    overflow-y: auto;
+    flex: 1 1 auto; min-height: 0; overflow-y: auto;
     padding: .8rem 1rem;
     display: flex; flex-direction: column; gap: .55rem;
   }
   .chat-empty { margin: auto; color: var(--ink-soft); font-size: .88rem; text-align: center; max-width: 28ch; }
   .chat-hint  { font-size: .74rem; margin-top: .35rem; color: var(--line); }
 
-  .msg {
-    max-width: 76%; padding: .5rem .7rem; border-radius: 9px;
-    font-size: .88rem; white-space: pre-wrap; word-break: break-word;
-  }
+  .msg { max-width: 76%; padding: .5rem .7rem; border-radius: 9px; font-size: .88rem; white-space: pre-wrap; word-break: break-word; }
   .msg.user      { align-self: flex-end; background: var(--accent); color: var(--accent-ink); border-bottom-right-radius: 3px; }
   .msg.assistant { align-self: flex-start; background: var(--panel); border: 1px solid var(--line); border-bottom-left-radius: 3px; color: var(--ink); }
   .msg.assistant.pending  { color: var(--ink-soft); font-style: italic; }
-  .msg.assistant.no-data  { color: var(--ink-soft); }
   .msg.assistant.is-error { color: var(--flag-stockout); }
 
   .evidence { margin-top: .45rem; border-top: 1px dashed var(--line); padding-top: .35rem; }
   .evidence summary { cursor: pointer; font-size: .74rem; color: var(--accent); list-style: none; }
   .evidence summary::before { content: "▶ "; }
   details[open] > .evidence > summary::before { content: "▼ "; }
-  .evidence-body {
-    margin-top: .35rem; font-family: var(--mono); font-size: .72rem;
-    color: var(--ink-soft); white-space: pre-wrap; max-height: 150px; overflow-y: auto;
-  }
+  .evidence-body { margin-top: .35rem; font-family: var(--mono); font-size: .72rem; color: var(--ink-soft); white-space: pre-wrap; max-height: 150px; overflow-y: auto; }
 
   .chat-input-row {
     flex: 0 0 auto; display: flex; gap: .5rem;
@@ -179,18 +163,19 @@
     padding: .45rem .65rem; border: 1px solid var(--line); border-radius: 6px;
     background: var(--bg); color: var(--ink);
   }
-  #chatInput:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
+  #chatInput:focus { outline: 2px solid var(--accent); border-color: transparent; }
   .send-btn {
     font-family: var(--sans); font-size: .85rem; font-weight: 600;
     color: var(--accent-ink); background: var(--accent);
-    border: none; border-radius: 6px; padding: 0 1rem; cursor: pointer; white-space: nowrap;
+    border: none; border-radius: 6px; padding: 0 1rem; cursor: pointer;
   }
   .send-btn:disabled { opacity: .5; cursor: default; }
 
-  @media (max-width: 420px) {
-    .flag-grid { gap: .3rem; padding: .45rem .65rem; }
-    .card-count { font-size: 1.4rem; }
-    .msg { max-width: 90%; }
+  @media (max-width: 440px) {
+    .flag-grid  { gap: .3rem; padding: .4rem .65rem; }
+    .card-count { font-size: 1.5rem; }
+    .card-label { font-size: .78rem; }
+    .msg        { max-width: 92%; }
   }
 </style>
 </head>
@@ -200,62 +185,88 @@
   <!-- Topbar -->
   <header class="topbar">
     <div class="wordmark">Pharma<span>Copilot</span></div>
+    <nav class="nav">
+      <button class="nav-btn active" id="btn-dashboard" onclick="switchView('dashboard')">Dashboard</button>
+      <button class="nav-btn"        id="btn-chat"      onclick="switchView('chat')">Ask Copilot</button>
+    </nav>
     <div class="topbar-right">
       <select id="storeSelect" aria-label="Select store">
         <option value="all">All Stores</option>
-        <!-- populated from GET /api/data/stores -->
+        <!-- filled from GET /api/data/stores -->
       </select>
       <span class="date-badge" id="todayDate"></span>
     </div>
   </header>
 
-  <!-- 4 Flag Cards -->
-  <section class="flag-grid" aria-label="Today's attention">
-    <div class="flag-card stockout" id="card-stockout" role="button" tabindex="0">
-      <div class="card-count" id="count-stockout">—</div>
-      <div class="card-meta">
-        <div class="card-label">Stockout Risk</div>
-        <span class="card-sep">·</span>
-        <div class="card-sub" id="sub-stockout">Loading…</div>
-      </div>
-    </div>
-    <div class="flag-card expiry" id="card-expiry" role="button" tabindex="0">
-      <div class="card-count" id="count-expiry">—</div>
-      <div class="card-meta">
-        <div class="card-label">Near Expiry</div>
-        <span class="card-sep">·</span>
-        <div class="card-sub" id="sub-expiry">Loading…</div>
-      </div>
-    </div>
-    <div class="flag-card dead" id="card-dead" role="button" tabindex="0">
-      <div class="card-count" id="count-dead">—</div>
-      <div class="card-meta">
-        <div class="card-label">Dead Stock</div>
-        <span class="card-sep">·</span>
-        <div class="card-sub" id="sub-dead">Loading…</div>
-      </div>
-    </div>
-    <div class="flag-card ghost" id="card-ghost" role="button" tabindex="0">
-      <div class="card-count" id="count-ghost">—</div>
-      <div class="card-meta">
-        <div class="card-label">Ghost Stock</div>
-        <span class="card-sep">·</span>
-        <div class="card-sub" id="sub-ghost">Loading…</div>
-      </div>
-    </div>
-  </section>
+  <!-- ── Dashboard view ── -->
+  <div id="view-dashboard" class="view active">
 
-  <!-- Detail panel — shown on card click -->
-  <section class="detail-panel" id="detailPanel" hidden aria-live="polite">
-    <div class="detail-header">
-      <span class="detail-title" id="detailTitle"></span>
-      <button class="detail-close" id="detailClose" aria-label="Close">×</button>
-    </div>
-    <div class="detail-list" id="detailList"></div>
-  </section>
+    <!-- 6 flag cards -->
+    <section class="flag-grid" aria-label="Today's attention">
 
-  <!-- Chat -->
-  <section class="chat" aria-label="Ask the copilot">
+      <div class="flag-card stockout" id="card-stockout" role="button" tabindex="0">
+        <div class="card-count" id="count-stockout">—</div>
+        <div class="card-meta">
+          <div class="card-label">Stockout Risk</div>
+          <div class="card-sub"   id="sub-stockout">Loading…</div>
+        </div>
+      </div>
+
+      <div class="flag-card expiry" id="card-expiry" role="button" tabindex="0">
+        <div class="card-count" id="count-expiry">—</div>
+        <div class="card-meta">
+          <div class="card-label">Near Expiry</div>
+          <div class="card-sub"  id="sub-expiry">Loading…</div>
+        </div>
+      </div>
+
+      <div class="flag-card dead" id="card-dead" role="button" tabindex="0">
+        <div class="card-count" id="count-dead">—</div>
+        <div class="card-meta">
+          <div class="card-label">Dead Stock</div>
+          <div class="card-sub"  id="sub-dead">Loading…</div>
+        </div>
+      </div>
+
+      <div class="flag-card ghost" id="card-ghost" role="button" tabindex="0">
+        <div class="card-count" id="count-ghost">—</div>
+        <div class="card-meta">
+          <div class="card-label">Ghost Stock</div>
+          <div class="card-sub"  id="sub-ghost">Loading…</div>
+        </div>
+      </div>
+
+      <div class="flag-card spike" id="card-spike" role="button" tabindex="0">
+        <div class="card-count" id="count-spike">—</div>
+        <div class="card-meta">
+          <div class="card-label">Sales Spike</div>
+          <div class="card-sub"  id="sub-spike">Loading…</div>
+        </div>
+      </div>
+
+      <div class="flag-card drop" id="card-drop" role="button" tabindex="0">
+        <div class="card-count" id="count-drop">—</div>
+        <div class="card-meta">
+          <div class="card-label">Sales Drop</div>
+          <div class="card-sub"  id="sub-drop">Loading…</div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- Detail panel — shown on card click -->
+    <section class="detail-panel" id="detailPanel" hidden aria-live="polite">
+      <div class="detail-header">
+        <span class="detail-title" id="detailTitle"></span>
+        <button class="detail-close" id="detailClose" aria-label="Close">×</button>
+      </div>
+      <div class="detail-list" id="detailList"></div>
+    </section>
+
+  </div><!-- /dashboard -->
+
+  <!-- ── Chat view ── -->
+  <div id="view-chat" class="view">
     <div class="chat-log" id="chatLog">
       <div class="chat-empty" id="chatEmpty">
         Ask about sales, stock levels, or today's flags.
@@ -266,20 +277,20 @@
       <input id="chatInput" type="text" placeholder="Ask a question…" autocomplete="off" />
       <button class="send-btn" type="submit" id="chatSend">Send</button>
     </form>
-  </section>
+  </div><!-- /chat -->
 
-</div>
+</div><!-- /app -->
 
 <script>
 (function () {
   "use strict";
 
-  /* ── State ──────────────────────────────────────────────────── */
-  var report        = null;   // cached response from GET /api/attention
-  var activeCard    = null;   // 'stockout' | 'expiry' | 'dead' | 'ghost' | null
-  var selectedStore = "all";  // 'all' | 'S001' | 'S002' | 'S003'
+  /* ── State ── */
+  var report        = null;   // cached from GET /api/attention
+  var activeCard    = null;   // 'stockout'|'expiry'|'dead'|'ghost'|'spike'|'drop'|null
+  var selectedStore = "all";  // 'all'|'S001'|'S002'|'S003'
 
-  /* ── DOM refs ───────────────────────────────────────────────── */
+  /* ── DOM refs ── */
   var storeSelect = document.getElementById("storeSelect");
   var todayDateEl = document.getElementById("todayDate");
   var detailPanel = document.getElementById("detailPanel");
@@ -297,39 +308,63 @@
     expiry:   { el: document.getElementById("card-expiry"),   count: document.getElementById("count-expiry"),   sub: document.getElementById("sub-expiry")   },
     dead:     { el: document.getElementById("card-dead"),     count: document.getElementById("count-dead"),     sub: document.getElementById("sub-dead")     },
     ghost:    { el: document.getElementById("card-ghost"),    count: document.getElementById("count-ghost"),    sub: document.getElementById("sub-ghost")    },
+    spike:    { el: document.getElementById("card-spike"),    count: document.getElementById("count-spike"),    sub: document.getElementById("sub-spike")    },
+    drop:     { el: document.getElementById("card-drop"),     count: document.getElementById("count-drop"),     sub: document.getElementById("sub-drop")     },
   };
 
-  /* ── Date ───────────────────────────────────────────────────── */
+  /* ── Date ── */
   todayDateEl.textContent = new Date().toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 
-  /* ── Utility ────────────────────────────────────────────────── */
+  /* ── View switching ── */
+  window.switchView = function (view) {
+    document.querySelectorAll(".view").forEach(function (el)    { el.classList.remove("active"); });
+    document.querySelectorAll(".nav-btn").forEach(function (el) { el.classList.remove("active"); });
+    document.getElementById("view-" + view).classList.add("active");
+    document.getElementById("btn-"  + view).classList.add("active");
+    if (view === "chat") chatInput.focus();
+  };
+
+  /* ── Utility ── */
   function esc(s) {
-    return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 
-  /* ── Load stores from GET /api/data/stores ──────────────────── */
+  /* "Paracetamol 500mg and 2 more" */
+  function makeSub(items, labelFn) {
+    if (!items || !items.length) return "";
+    var first = labelFn(items[0]);
+    return items.length > 1 ? first + " and " + (items.length - 1) + " more" : first;
+  }
+
+  /* ── Load stores from GET /api/data/stores ── */
   async function loadStores() {
     try {
       var res  = await fetch("/api/data/stores");
       var data = await res.json();
       (data.stores || []).forEach(function (s) {
         var opt = document.createElement("option");
-        opt.value       = s.store_id;       // e.g. "S001"
-        opt.textContent = s.store_name;     // e.g. "MedPlus Downtown"
+        opt.value       = s.store_id;    // S001 / S002 / S003
+        opt.textContent = s.store_name;  // MedPlus Downtown etc.
         storeSelect.appendChild(opt);
       });
-    } catch (_) { /* keep default "All Stores" option */ }
+    } catch (_) { /* keep default "All Stores" */ }
   }
 
+  /* Store change — update counts AND refresh open detail panel (no toggle) */
   storeSelect.addEventListener("change", function () {
     selectedStore = storeSelect.value;
     if (report) renderCards();
-    if (activeCard) openDetail(activeCard);
+    if (activeCard && !detailPanel.hidden) {
+      buildDetailList(activeCard);   // refresh contents, do NOT toggle off
+    }
   });
 
-  /* ── Load attention data from GET /api/attention ────────────── */
+  /* ── Load attention from GET /api/attention ── */
   async function loadAttention() {
-    setCardsState("loading");
+    Object.values(cards).forEach(function (c) {
+      c.count.textContent = "—";
+      c.sub.textContent   = "Loading…";
+    });
     try {
       var res  = await fetch("/api/attention");
       var data = await res.json();
@@ -337,22 +372,19 @@
         report = data.report;
         renderCards();
       } else {
-        setCardsState("error");
+        setError();
       }
-    } catch (_) {
-      setCardsState("error");
-    }
+    } catch (_) { setError(); }
   }
 
-  function setCardsState(state) {
-    var txt = state === "loading" ? "Loading…" : "Could not load";
+  function setError() {
     Object.values(cards).forEach(function (c) {
-      c.count.textContent = state === "loading" ? "—" : "!";
-      c.sub.textContent   = txt;
+      c.count.textContent = "!";
+      c.sub.textContent   = "Could not load";
     });
   }
 
-  /* Filter items that have a store_id field by the selected store */
+  /* Filter by selected store — works for ALL 6 flag types (all have store_id) */
   function filterStore(items) {
     if (selectedStore === "all" || !items) return items || [];
     return items.filter(function (item) {
@@ -360,49 +392,59 @@
     });
   }
 
-  function shortName(name, words) {
-    return String(name || "").split(" ").slice(0, words || 3).join(" ");
-  }
-
+  /* ── Render 6 flag cards ── */
   function renderCards() {
     if (!report) return;
-    // All 4 now have store_id — filterStore works for all
+
     var stockouts = filterStore(report.stockout_risk || []);
     var expiry    = filterStore(report.expiry_risk   || []);
     var dead      = filterStore(report.dead_stock    || []);
     var ghost     = filterStore(report.ghost_stock   || []);
+    var spikes    = filterStore(report.sales_spikes  || []);
+    var drops     = filterStore(report.sales_drops   || []);
 
-    // Stockout card
-    cards.stockout.count.textContent = stockouts.length;
-    cards.stockout.sub.textContent   = stockouts.length
-      ? shortName(stockouts[0].product_name, 3) + " — " + stockouts[0].days_left + "d left"
-      : "All clear ✓";
+    setCard(cards.stockout, stockouts,
+      makeSub(stockouts, function(i){ return firstName(i) + " — " + i.days_left + "d left"; }),
+      "All clear ✓");
 
-    // Expiry card
-    cards.expiry.count.textContent = expiry.length;
-    cards.expiry.sub.textContent   = expiry.length
-      ? shortName(expiry[0].product_name, 2) + " — " + expiry[0].days_to_expiry + "d"
-      : "None expiring soon ✓";
+    setCard(cards.expiry, expiry,
+      makeSub(expiry, function(i){ return firstName(i) + " (" + i.days_to_expiry + "d)"; }),
+      "None expiring ✓");
 
-    // Dead stock card (current_stock per store)
-    cards.dead.count.textContent = dead.length;
-    cards.dead.sub.textContent   = dead.length
-      ? shortName(dead[0].product_name, 2) + " — " + dead[0].current_stock + " units"
-      : "All moving ✓";
+    setCard(cards.dead, dead,
+      makeSub(dead, function(i){ return firstName(i) + " — " + i.current_stock + " units"; }),
+      "All moving ✓");
 
-    // Ghost stock card (current_stock per store)
-    cards.ghost.count.textContent = ghost.length;
-    cards.ghost.sub.textContent   = ghost.length
-      ? shortName(ghost[0].product_name, 2) + " — " + ghost[0].current_stock + " units"
-      : "None ✓";
+    setCard(cards.ghost, ghost,
+      makeSub(ghost, function(i){ return firstName(i) + " — " + i.current_stock + " units"; }),
+      "None ✓");
+
+    setCard(cards.spike, spikes,
+      makeSub(spikes, function(i){ return firstName(i) + " " + i.spike_factor + "×"; }),
+      "No spikes ✓");
+
+    setCard(cards.drop, drops,
+      makeSub(drops, function(i){ return firstName(i) + " ↓" + i.drop_factor + "×"; }),
+      "No drops ✓");
   }
 
-  /* ── Detail panel ───────────────────────────────────────────── */
+  function firstName(item) {
+    return (item.product_name || "").split(" ").slice(0, 3).join(" ");
+  }
+
+  function setCard(card, items, subText, emptyText) {
+    card.count.textContent = items.length;
+    card.sub.textContent   = items.length ? subText : emptyText;
+  }
+
+  /* ── Detail panel ── */
   var DETAIL_LABELS = {
     stockout: "⚠ Stockout Risk — Running Low",
     expiry:   "⏳ Near Expiry — Act Before Loss",
     dead:     "📦 Dead Stock — Not Moving",
-    ghost:    "👻 Ghost Stock — Zero Sales (60 days)",
+    ghost:    "👻 Ghost Stock — Zero Sales Ever",
+    spike:    "📈 Sales Spike — Unusually High",
+    drop:     "📉 Sales Drop — Unusually Low",
   };
 
   function getDetailItems(type) {
@@ -410,8 +452,10 @@
     switch (type) {
       case "stockout": return filterStore(report.stockout_risk || []);
       case "expiry":   return filterStore(report.expiry_risk   || []);
-      case "dead":     return report.dead_stock  || [];
-      case "ghost":    return report.ghost_stock || [];
+      case "dead":     return filterStore(report.dead_stock    || []);
+      case "ghost":    return filterStore(report.ghost_stock   || []);
+      case "spike":    return filterStore(report.sales_spikes  || []);
+      case "drop":     return filterStore(report.sales_drops   || []);
       default:         return [];
     }
   }
@@ -419,16 +463,43 @@
   function metaText(type, item) {
     switch (type) {
       case "stockout": return item.current_stock + " units\n" + item.days_left + "d left";
-      case "expiry":   return item.days_to_expiry + "d\n"   + item.current_stock + " units";
-      case "dead":     return item.current_stock + " units\n0/day";
+      case "expiry":   return item.days_to_expiry + "d\n"    + item.current_stock + " units";
+      case "dead":     return item.current_stock + " units\n0 sales/day";
       case "ghost":    return item.current_stock + " units\n0 ever";
+      case "spike":    return item.spike_factor + "× spike\n" + item.prior_avg + "→" + item.recent_avg + "/d";
+      case "drop":     return "↓ " + item.prior_avg + "→" + item.recent_avg + "/d";
       default:         return "";
     }
   }
 
+  /* Build detail list — called on card click AND on store change */
+  function buildDetailList(type) {
+    detailTitle.textContent = DETAIL_LABELS[type] || type;
+    detailList.innerHTML    = "";
+    var items = getDetailItems(type);
+
+    if (!items.length) {
+      detailList.innerHTML = "<div style='padding:.4rem 0;font-size:.8rem;color:var(--ink-soft)'>No items for this selection.</div>";
+      return;
+    }
+
+    items.forEach(function (item) {
+      var row = document.createElement("div");
+      row.className = "detail-row";
+      row.innerHTML =
+        "<div>" +
+          "<div class='detail-name'>"   + esc(item.product_name) + "</div>" +
+          (item.store_name ? "<div class='detail-store'>" + esc(item.store_name) + "</div>" : "") +
+          "<div class='detail-action'>" + esc(item.action || "") + "</div>" +
+        "</div>" +
+        "<div class='detail-meta'>" + esc(metaText(type, item)) + "</div>";
+      detailList.appendChild(row);
+    });
+  }
+
+  /* Card click — toggle open/close */
   function openDetail(type) {
     var isSame = activeCard === type && !detailPanel.hidden;
-    // Deactivate all cards
     Object.values(cards).forEach(function (c) { c.el.classList.remove("active"); });
 
     if (isSame) {
@@ -439,26 +510,7 @@
 
     activeCard = type;
     cards[type].el.classList.add("active");
-    detailTitle.textContent = DETAIL_LABELS[type];
-    detailList.innerHTML    = "";
-
-    var items = getDetailItems(type);
-    if (!items.length) {
-      detailList.innerHTML = "<div style='padding:.4rem 0;font-size:.8rem;color:var(--ink-soft)'>No items for this selection.</div>";
-    } else {
-      items.forEach(function (item) {
-        var row = document.createElement("div");
-        row.className = "detail-row";
-        row.innerHTML =
-          "<div>" +
-            "<div class='detail-name'>"   + esc(item.product_name) + "</div>" +
-            (item.store_name ? "<div class='detail-store'>" + esc(item.store_name) + "</div>" : "") +
-            "<div class='detail-action'>" + esc(item.action || "") + "</div>" +
-          "</div>" +
-          "<div class='detail-meta'>" + esc(metaText(type, item)) + "</div>";
-        detailList.appendChild(row);
-      });
-    }
+    buildDetailList(type);
     detailPanel.hidden = false;
   }
 
@@ -475,13 +527,115 @@
     });
   });
 
-  /* ── Chat — POST /api/chat with {"question":"..."} ──────────── */
+  /* ── Format facts for "Show numbers behind this" ── */
+  function formatFacts(facts) {
+    if (!facts || Object.keys(facts).length === 0) return "";
+    var lines  = [];
+    var intent = facts.intent;
+
+    if (facts.found === false) {
+      if (facts.reason === "product_not_found") {
+        lines.push("❌ Product not found: " + (facts.searched_for || ""));
+        if (facts.suggestions && facts.suggestions.length)
+          lines.push("🔍 Did you mean: " + facts.suggestions.join(", ") + "?");
+      } else {
+        lines.push("ℹ️ " + (facts.reason || "Cannot answer from available data"));
+        if (facts.what_i_have) lines.push("📂 Available: " + facts.what_i_have);
+        if (facts.honest_message) lines.push(facts.honest_message);
+      }
+      return lines.join("\n");
+    }
+
+    switch (intent) {
+      case "stock_level":
+        lines.push("📦 Stock — " + facts.product + " @ " + facts.store);
+        lines.push("• Stock: " + facts.stock_count + " units");
+        if (facts.avg_daily_rate_7d != null) lines.push("• Selling rate: " + facts.avg_daily_rate_7d + " units/day (7d avg)");
+        if (facts.days_left != null)         lines.push("• Days left: " + facts.days_left);
+        (facts.breakdown || []).forEach(function (b) {
+          lines.push("  – " + b.store + ": " + b.stock + " units (exp: " + b.expiry + ")");
+        });
+        break;
+
+      case "sales_summary":
+        lines.push("📊 Sales — " + facts.product + " @ " + facts.store);
+        lines.push("• Period: last " + facts.period_days + " days");
+        lines.push("• Total sold: " + facts.total_units_sold + " units");
+        lines.push("• Avg/day: "   + facts.avg_units_per_day + " units");
+        if (facts.estimated_revenue_inr) lines.push("• Est. revenue: ₹" + facts.estimated_revenue_inr);
+        break;
+
+      case "low_stock":
+        lines.push("⚠ " + facts.count + " stockout risk(s) @ " + facts.store);
+        (facts.items || []).slice(0, 6).forEach(function (item) {
+          lines.push("• " + item.product_name + " — " + item.current_stock + " units, " + item.days_left + "d left @ " + item.store_name);
+        });
+        break;
+
+      case "expiry_risk":
+        lines.push("⏳ " + facts.count + " item(s) near expiry @ " + facts.store);
+        (facts.items || []).slice(0, 6).forEach(function (item) {
+          lines.push("• " + item.product_name + " — " + item.days_to_expiry + "d, " + item.current_stock + " units @ " + item.store_name);
+        });
+        break;
+
+      case "dead_stock":
+        lines.push("📦 " + facts.count + " dead stock item(s)");
+        lines.push("Criteria: " + facts.criteria);
+        (facts.items || []).slice(0, 6).forEach(function (item) {
+          lines.push("• " + item.product_name + " @ " + (item.store_name || "all stores") + " — " + item.current_stock + " units, " + item.daily_rate + " units/day");
+        });
+        break;
+
+      case "ghost_stock":
+        lines.push("👻 " + facts.count + " ghost stock item(s)");
+        lines.push("Criteria: " + facts.criteria);
+        (facts.items || []).slice(0, 6).forEach(function (item) {
+          lines.push("• " + item.product_name + " @ " + (item.store_name || "all stores") + " — " + item.current_stock + " units, 0 sales ever");
+        });
+        break;
+
+      case "sales_spike_drop":
+        (facts.spikes || []).forEach(function (s) {
+          lines.push("📈 Spike: " + s.product_name + " @ " + (s.store_name || "all") + " — " + s.spike_factor + "× (" + s.prior_avg + "→" + s.recent_avg + " units/day)");
+        });
+        (facts.drops || []).forEach(function (d) {
+          lines.push("📉 Drop: " + d.product_name + " @ " + (d.store_name || "all") + " — " + d.prior_avg + "→" + d.recent_avg + " units/day");
+        });
+        break;
+
+      case "store_comparison":
+        lines.push("🏪 Performance last " + facts.period_days + " days:");
+        (facts.ranked_stores || []).forEach(function (s, i) {
+          var tag = i === 0 ? "🔴 Lowest" : (i === facts.ranked_stores.length - 1 ? "🟢 Highest" : "🟡");
+          lines.push(tag + " " + s.store_name + " — " + s.total_units_sold + " units | ₹" + s.estimated_revenue_inr);
+        });
+        break;
+
+      case "attention_summary":
+        var sm = facts.summary || {};
+        lines.push("📋 Today at a glance:");
+        lines.push("• Stockout risks: " + (sm.stockout_count    || 0));
+        lines.push("• Near expiry:    " + (sm.expiry_count      || 0));
+        lines.push("• Dead stock:     " + (sm.dead_stock_count  || 0));
+        lines.push("• Ghost stock:    " + (sm.ghost_stock_count || 0));
+        lines.push("• Sales spikes:   " + (sm.spike_count       || 0));
+        lines.push("• Sales drops:    " + (sm.drop_count        || 0));
+        break;
+
+      default:
+        if (facts.honest_message) lines.push("ℹ️ " + facts.honest_message);
+    }
+    return lines.join("\n");
+  }
+
+  /* ── Chat — POST /api/chat {question, store_id?} ── */
   function scrollChat() { chatLog.scrollTop = chatLog.scrollHeight; }
 
   function addUserMsg(text) {
     if (chatEmpty && chatEmpty.parentNode === chatLog) chatEmpty.remove();
     var el = document.createElement("div");
-    el.className   = "msg user";
+    el.className = "msg user";
     el.textContent = text;
     chatLog.appendChild(el);
     scrollChat();
@@ -496,98 +650,6 @@
     return el;
   }
 
-  /* ── Format facts as readable summary (not raw JSON) ───────── */
-  function formatFacts(facts) {
-    if (!facts || Object.keys(facts).length === 0) return "";
-    var lines = [];
-    var intent = facts.intent;
-
-    if (facts.found === false) {
-      if (facts.reason === "product_not_found") {
-        lines.push("❌ Product not found: " + (facts.searched_for || ""));
-        if (facts.suggestions && facts.suggestions.length)
-          lines.push("🔍 Did you mean: " + facts.suggestions.join(", ") + "?");
-      } else {
-        lines.push("ℹ️ " + (facts.reason || "Cannot answer from available data"));
-        if (facts.what_i_have) lines.push("📂 Available: " + facts.what_i_have);
-      }
-      return lines.join("\n");
-    }
-
-    switch (intent) {
-      case "stock_level":
-        lines.push("📦 Stock — " + facts.product + " @ " + facts.store);
-        lines.push("• Stock: " + facts.stock_count + " units");
-        if (facts.avg_daily_rate_7d != null) lines.push("• Selling rate: " + facts.avg_daily_rate_7d + " units/day (7d avg)");
-        if (facts.days_left != null)         lines.push("• Days left: " + facts.days_left);
-        (facts.breakdown || []).forEach(function(b) {
-          lines.push("  – " + b.store + ": " + b.stock + " units (exp: " + b.expiry + ")");
-        });
-        break;
-      case "sales_summary":
-        lines.push("📊 Sales — " + facts.product + " @ " + facts.store);
-        lines.push("• Period: last " + facts.period_days + " days (" + facts.period_from + " to " + facts.period_to + ")");
-        lines.push("• Total sold: " + facts.total_units_sold + " units");
-        lines.push("• Avg/day: " + facts.avg_units_per_day + " units");
-        if (facts.estimated_revenue_inr) lines.push("• Est. revenue: ₹" + facts.estimated_revenue_inr);
-        break;
-      case "low_stock":
-        lines.push("⚠ " + facts.count + " stockout risk(s) @ " + facts.store);
-        (facts.items || []).slice(0, 5).forEach(function(item) {
-          lines.push("• " + item.product_name + " — " + item.current_stock + " units, " + item.days_left + "d left @ " + item.store_name);
-        });
-        break;
-      case "expiry_risk":
-        lines.push("⏳ " + facts.count + " item(s) near expiry @ " + facts.store);
-        (facts.items || []).slice(0, 5).forEach(function(item) {
-          lines.push("• " + item.product_name + " — expires in " + item.days_to_expiry + "d, " + item.current_stock + " units @ " + item.store_name);
-        });
-        break;
-      case "dead_stock":
-        lines.push("📦 " + facts.count + " dead stock item(s)");
-        lines.push("Criteria: " + facts.criteria);
-        (facts.items || []).slice(0, 5).forEach(function(item) {
-          lines.push("• " + item.product_name + " @ " + (item.store_name || "all stores") + " — " + item.current_stock + " units, " + item.daily_rate + " units/day");
-        });
-        break;
-      case "ghost_stock":
-        lines.push("👻 " + facts.count + " ghost stock item(s)");
-        lines.push("Criteria: " + facts.criteria);
-        (facts.items || []).slice(0, 5).forEach(function(item) {
-          lines.push("• " + item.product_name + " @ " + (item.store_name || "all stores") + " — " + item.current_stock + " units, 0 sales ever");
-        });
-        break;
-      case "sales_spike_drop":
-        (facts.spikes || []).forEach(function(s) {
-          lines.push("📈 Spike: " + s.product_name + " — " + s.spike_factor + "× (" + s.prior_avg + " → " + s.recent_avg + " units/day)");
-        });
-        (facts.drops || []).forEach(function(d) {
-          lines.push("📉 Drop: " + d.product_name + " — " + d.prior_avg + " → " + d.recent_avg + " units/day");
-        });
-        break;
-      case "store_comparison":
-        lines.push("🏪 Performance last " + facts.period_days + " days:");
-        (facts.ranked_stores || []).forEach(function(s, i) {
-          var tag = i === 0 ? "🔴 Lowest" : (i === facts.ranked_stores.length - 1 ? "🟢 Highest" : "🟡");
-          lines.push(tag + " " + s.store_name + " — " + s.total_units_sold + " units | ₹" + s.estimated_revenue_inr);
-        });
-        break;
-      case "attention_summary":
-        var sm = facts.summary || {};
-        lines.push("📋 Today at a glance:");
-        lines.push("• Stockout risks: " + (sm.stockout_count || 0));
-        lines.push("• Near expiry:    " + (sm.expiry_count || 0));
-        lines.push("• Dead stock:     " + (sm.dead_stock_count || 0));
-        lines.push("• Sales spikes:   " + (sm.spike_count || 0));
-        lines.push("• Sales drops:    " + (sm.drop_count || 0));
-        break;
-      default:
-        // Out-of-scope or unknown — show honest_message if present
-        if (facts.honest_message) lines.push("ℹ️ " + facts.honest_message);
-    }
-    return lines.join("\n");
-  }
-
   function resolveMsg(el, answer, facts) {
     el.classList.remove("pending");
     el.textContent = "";
@@ -598,9 +660,9 @@
 
     var summary = formatFacts(facts);
     if (summary) {
-      var det = document.createElement("details");
+      var det  = document.createElement("details");
       det.className = "evidence";
-      var sum = document.createElement("summary");
+      var sum  = document.createElement("summary");
       sum.textContent = "Show numbers behind this";
       det.appendChild(sum);
       var body = document.createElement("div");
@@ -632,9 +694,8 @@
     var pending = addPending();
 
     try {
-      // POST /api/chat — send question + current store context
       var body = { question: question };
-      if (selectedStore !== "all") body.store_id = selectedStore;  // store context
+      if (selectedStore !== "all") body.store_id = selectedStore;   // store context
 
       var res  = await fetch("/api/chat", {
         method:  "POST",
@@ -642,6 +703,7 @@
         body:    JSON.stringify(body),
       });
       var data = await res.json();
+
       if (data.answer) {
         resolveMsg(pending, data.answer, data.facts);
       } else {
@@ -656,10 +718,10 @@
     }
   });
 
-  /* ── Init ───────────────────────────────────────────────────── */
+  /* ── Init ── */
   async function init() {
-    await loadStores();      // GET /api/data/stores
-    await loadAttention();   // GET /api/attention
+    await loadStores();     // GET /api/data/stores
+    await loadAttention();  // GET /api/attention
   }
 
   init();
