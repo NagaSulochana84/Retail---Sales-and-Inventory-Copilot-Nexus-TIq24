@@ -19,6 +19,7 @@ from dotenv import load_dotenv
 from google import genai
 
 import data_loader
+import analytics
 
 # ── Load environment variables from .env ──────────────────────────────────────
 load_dotenv()
@@ -175,6 +176,25 @@ def api_stock():
         return jsonify({"status": "ok", "count": len(enriched), "stock": enriched})
     except Exception as exc:
         return jsonify({"status": "error", "error": str(exc)}), 500
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ROUTES — Analytics / Attention Panel (Step 3)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route("/api/attention")
+def attention_panel():
+    """
+    Today's Attention panel — runs all 4 deterministic checks.
+    Pure Python math — Gemini is NOT called here.
+    Each flag includes the numbers, assumption, and recommended action.
+    """
+    try:
+        report = analytics.run_all_checks()
+        return jsonify({"status": "ok", "report": report})
+    except Exception as exc:
+        return jsonify({"status": "error", "error": str(exc),
+                        "trace": traceback.format_exc()}), 500
 
 
 # ─────────────────────────────────────────────────────────────────────────────
