@@ -12,6 +12,7 @@ build/
 
 # Virtual environments
 venv/
+testenv/
 env/
 .venv/
 .env/

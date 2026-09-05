@@ -20,23 +20,24 @@ from google import genai
 
 import data_loader
 import analytics
-import qa_pipeline
 
 # ── Load environment variables from .env ──────────────────────────────────────
-load_dotenv()
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(BASE_DIR, ".env"))
+
+import qa_pipeline
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if not GEMINI_API_KEY:
-    raise EnvironmentError(
-        "GEMINI_API_KEY not found. "
-        "Create a .env file with: GEMINI_API_KEY=your_key_here"
-    )
+OFFLINE_MODE = (
+    os.getenv("GEMINI_OFFLINE_MODE", "false").lower() == "true"
+    or not GEMINI_API_KEY
+)
 
 # ── Gemini client (new google-genai SDK) ──────────────────────────────────────
-client = genai.Client(api_key=GEMINI_API_KEY)
+client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
 # ── Model names — single place to update ──────────────────────────────────────
-CHAT_MODEL      = "gemini-2.5-flash"      # free tier chat/generation model
+CHAT_MODEL      = os.getenv("GEMINI_CHAT_MODEL", "gemini-2.5-flash")
 EMBEDDING_MODEL = "gemini-embedding-001"  # for RAG/semantic search (Step 4)
 
 # ── Flask app ──────────────────────────────────────────────────────────────────
@@ -62,6 +63,11 @@ def health():
 @app.route("/api/gemini-test")
 def gemini_test():
     """Live Gemini call — language only, no math, no invented numbers."""
+    if OFFLINE_MODE:
+        return jsonify({
+            "status": "offline",
+            "message": "Gemini is disabled; local CSV analytics are active."
+        })
     try:
         prompt = (
             "You are PharmaCopilot, an AI assistant for a pharmacy chain. "

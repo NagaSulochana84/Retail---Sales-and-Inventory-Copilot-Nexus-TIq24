@@ -21,6 +21,7 @@ Out-of-scope categories with specific honest messages:
 """
 
 import json
+import os
 import traceback
 from datetime import date, timedelta
 
@@ -32,6 +33,10 @@ TODAY      = date.today()
 TODAY_STR  = TODAY.isoformat()
 DATA_START = (TODAY - timedelta(days=60)).isoformat()   # 2026-07-07
 DATA_FOOTER = f"📊 Data: {DATA_START} to {TODAY_STR} | 3 MedPlus branches (Downtown, Mall Branch, Suburb)"
+OFFLINE_MODE = (
+    os.getenv("GEMINI_OFFLINE_MODE", "false").lower() == "true"
+    or not os.getenv("GEMINI_API_KEY")
+)
 
 # ── Out-of-scope keyword sets ─────────────────────────────────────────────────
 _OOS_FINANCIAL  = {"profit","margin","revenue","income","loss","earning","p&l","roi","markup"}
@@ -164,7 +169,50 @@ def parse_intent(question: str, gemini_client, chat_model: str) -> dict:
     except Exception as exc:
         return {"intent": "unknown", "store_id": None, "product_id": None,
                 "product_name_mentioned": None, "days": 7,
-                "confidence": "low", "_parse_error": str(exc)}
+                "confidence": "low", "_offline": True, "_parse_error": str(exc)}
+
+
+def _local_intent(question: str) -> dict:
+    """Small offline intent mapper used when the Gemini quota is unavailable."""
+    q = question.lower()
+    product = next((p for p in data_loader.get_products()
+                    if p["product_name"].lower() in q), None)
+    store = next((s for s in data_loader.get_stores()
+                  if s["store_name"].lower() in q), None)
+    if not store:
+        store = next((s for s in data_loader.get_stores()
+                      if s["store_name"].split()[-1].lower() in q), None)
+
+    if "expiry" in q or "expire" in q:
+        intent = "expiry_risk"
+    elif "stockout" in q or "run out" in q or "running low" in q or "low stock" in q:
+        intent = "low_stock"
+    elif "overstock" in q or "dead stock" in q or "not moving" in q:
+        intent = "dead_stock"
+    elif "never sold" in q or "ghost stock" in q:
+        intent = "ghost_stock"
+    elif "spike" in q or "drop" in q or "unusual" in q:
+        intent = "sales_spike_drop"
+    elif "which store" in q or "best store" in q or "worst store" in q:
+        intent = "store_comparison"
+    elif "attention" in q or "today" in q:
+        intent = "attention_summary"
+    elif "sell" in q or "sales" in q or "sold" in q:
+        intent = "sales_summary"
+    elif "stock" in q:
+        intent = "stock_level"
+    else:
+        intent = "unknown"
+
+    return {
+        "intent": intent,
+        "store_id": store["store_id"] if store else None,
+        "product_id": product["product_id"] if product else None,
+        "product_name_mentioned": product["product_name"] if product else None,
+        "days": 30 if "month" in q else 7,
+        "confidence": "medium",
+        "_offline": True,
+    }
 
 
 # ── 3. Python fact fetchers ───────────────────────────────────────────────────
@@ -383,10 +431,42 @@ def phrase_answer(question: str, facts: dict, gemini_client, chat_model: str) ->
         resp = gemini_client.models.generate_content(model=chat_model, contents=prompt)
         return resp.text.strip()
     except Exception as exc:
+        error_text = str(exc)
+        if "429" in error_text or "RESOURCE_EXHAUSTED" in error_text:
+            return _local_phrase(facts)
         return (
             f"I'm sorry, I ran into a technical issue phrasing the answer. "
-            f"Error: {str(exc)}\n{DATA_FOOTER}"
+            f"Error: {error_text}\n{DATA_FOOTER}"
         )
+
+
+def _local_phrase(facts: dict) -> str:
+    """Format computed facts without an external model."""
+    if not facts.get("found"):
+        message = facts.get("honest_message") or facts.get("reason", "No matching data found.")
+        return f"{message}\n{DATA_FOOTER}"
+
+    intent = facts.get("intent")
+    if intent == "stock_level":
+        return (f"{facts['product']} has {facts['stock_count']} units across {facts['store']}.\n"
+                f"Average daily sales: {facts['avg_daily_rate_7d']}; estimated days left: {facts['days_left']}.\n"
+                f"{DATA_FOOTER}")
+    if intent == "sales_summary":
+        return (f"{facts['product']} sold {facts['total_units_sold']} units in the last "
+                f"{facts['period_days']} days.\nAverage per day: {facts['avg_units_per_day']}.\n"
+                f"{DATA_FOOTER}")
+    if intent == "store_comparison":
+        ranked = facts["ranked_stores"]
+        return (f"{ranked[-1]['store_name']} sold the most units ({ranked[-1]['total_units_sold']}); "
+                f"{ranked[0]['store_name']} sold the fewest ({ranked[0]['total_units_sold']}).\n"
+                f"{DATA_FOOTER}")
+    if intent == "attention_summary":
+        return f"{facts['summary']}\n{DATA_FOOTER}"
+
+    count = facts.get("count")
+    if count is not None:
+        return f"I found {count} item(s) requiring attention.\n{DATA_FOOTER}"
+    return f"I found matching data for your question.\n{DATA_FOOTER}"
 
 
 # ── Out-of-scope specific messages ────────────────────────────────────────────
@@ -457,19 +537,24 @@ def answer_question(question: str, gemini_client, chat_model: str,
     oos = _detect_oos(question)
     if oos:
         facts  = OOS_MESSAGES[oos]
-        answer = phrase_answer(question, facts, gemini_client, chat_model)
+        answer = (_local_phrase(facts) if OFFLINE_MODE
+                  else phrase_answer(question, facts, gemini_client, chat_model))
         return {"question": question, "intent": f"out_of_scope_{oos}",
                 "facts": facts, "answer": answer}
 
     try:
-        intent = parse_intent(question, gemini_client, chat_model)
+        intent = (_local_intent(question) if OFFLINE_MODE
+              else parse_intent(question, gemini_client, chat_model))
+        if intent.get("_offline"):
+            intent = _local_intent(question)
 
         # If frontend sent a specific store context, let it override the parsed store
         if store_id and store_id != "all":
             intent["store_id"] = store_id
 
         facts  = fetch_facts(intent)
-        answer = phrase_answer(question, facts, gemini_client, chat_model)
+        answer = (_local_phrase(facts) if intent.get("_offline")
+              else phrase_answer(question, facts, gemini_client, chat_model))
 
         return {"question": question, "intent": intent.get("intent", "unknown"),
                 "facts": facts, "answer": answer}
